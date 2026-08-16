@@ -5,6 +5,7 @@ import {
   VaultNotLoadedError,
   ItemCountDecreasedError,
   MAX_BACKUPS,
+  type Item,
 } from "./vaultStore";
 
 // Кросс-компат тест "emergency-decrypt.py <-> приложение" (interfaces.md) -
@@ -131,6 +132,88 @@ describe("VaultStore: addItem / updateItem / deleteItem / isDirty", () => {
 
     expect(store.search("")).toHaveLength(0);
     expect(() => store.deleteItem(created.id)).toThrow(ItemNotFoundError);
+  });
+});
+
+describe("VaultStore: replaceAllItems (import, R100)", () => {
+  // Полноценные Item, не через addItem() - импорт приносит готовые id/
+  // createdAt/updatedAt/history из файла, ровно то, что replaceAllItems
+  // обязана принять как есть, не перегенерировать.
+  function importedItem(overrides: Partial<Item> & Pick<Item, "id" | "title">): Item {
+    return {
+      type: "note",
+      tags: [],
+      fields: [],
+      note: "",
+      attachments: [],
+      createdAt: "2020-01-01T00:00:00.000Z",
+      updatedAt: "2020-01-01T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("replaces the collection with the given items and marks the store dirty", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("pw", 1000);
+    store.addItem({ type: "note", title: "will be gone", tags: [], fields: [] });
+
+    const imported = [
+      importedItem({ id: "imported-1", title: "Imported one" }),
+      importedItem({ id: "imported-2", title: "Imported two" }),
+    ];
+    store.replaceAllItems(imported);
+
+    expect(store.search("").map((i) => ({ id: i.id, title: i.title }))).toEqual([
+      { id: "imported-1", title: "Imported one" },
+      { id: "imported-2", title: "Imported two" },
+    ]);
+    expect(store.isDirty()).toBe(true);
+  });
+
+  it("throws VaultNotLoadedError when called before load/create", () => {
+    const store = new VaultStore();
+    expect(() => store.replaceAllItems([])).toThrow(VaultNotLoadedError);
+  });
+
+  it("does not keep a reference to the passed array - mutating it afterwards does not affect the store", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("pw", 1000);
+    const imported = [importedItem({ id: "imported-1", title: "Original title" })];
+
+    store.replaceAllItems(imported);
+    imported[0].title = "Mutated after the call";
+
+    expect(store.search("")[0].title).toBe("Original title");
+  });
+
+  it("importing fewer items than were loaded is caught by ItemCountDecreasedError on the next save, not bypassed", async () => {
+    readVaultMock.mockRejectedValue(new Error("ENOENT"));
+    const seed = new VaultStore();
+    await seed.createNewVault("pw", 1000);
+    seed.addItem({ type: "note", title: "a", tags: [], fields: [] });
+    seed.addItem({ type: "note", title: "b", tags: [], fields: [] });
+    seed.addItem({ type: "note", title: "c", tags: [], fields: [] });
+
+    const loaded = new VaultStore();
+    await loaded.loadFromBytes(await seed.toBytes(), "pw"); // loadedCount = 3
+
+    // "Импорт" файла с одной записью - replaceAllItems сама по себе не
+    // возражает (это не её работа).
+    loaded.replaceAllItems([importedItem({ id: "only-one", title: "Only one" })]);
+    expect(loaded.isDirty()).toBe(true);
+
+    // Но следующий save() обязан поймать уменьшение 3 -> 1, как и любое
+    // другое уменьшение - replaceAllItems не в обход R28.
+    await expect(loaded.save("D:/vault/vault.dat")).rejects.toMatchObject({
+      loaded: 3,
+      current: 1,
+    });
+    expect(writeVaultAtomicMock).not.toHaveBeenCalled();
+
+    // С подтверждением - проходит как обычно.
+    await expect(
+      loaded.save("D:/vault/vault.dat", { allowCountDecrease: true }),
+    ).resolves.toBeUndefined();
   });
 });
 

@@ -1,0 +1,283 @@
+.record-card {
+  /* Структурные константы этого компонента - тем же приёмом, что и
+     `--sidebar-w`/`--recent-w` в AppShell.css и `--list-rows-w` в List.css:
+     не общий токен tokens.css, но всё равно не голый px в объявлении. */
+  --tab-border-w: 2px;
+  --history-field-name-w: 80px;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  padding: var(--sp-6);
+  overflow-y: auto;
+  box-sizing: border-box;
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+
+.record-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.record-card__heading {
+  min-width: 0;
+}
+
+.record-card__type {
+  display: block;
+  margin-bottom: var(--sp-1);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.record-card__title {
+  margin: 0;
+  font-size: var(--fs-ui-lg);
+  font-weight: 600;
+  line-height: var(--lh-ui-lg);
+  overflow-wrap: break-word;
+}
+
+.record-card__edit-btn {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-field);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.record-card__edit-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.record-card__edit-btn:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
+}
+
+.record-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-card__tag {
+  padding: var(--sp-0) var(--sp-2);
+  border-radius: var(--r-chip);
+  background: var(--surface-raised);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+}
+
+.record-card__tabs {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+  border-bottom: var(--border-w) solid var(--border);
+}
+
+.record-card__tab {
+  padding: var(--sp-2) var(--sp-1);
+  border: none;
+  border-bottom: var(--tab-border-w) solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.record-card__tab:hover {
+  color: var(--text);
+}
+
+.record-card__tab:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
+}
+
+.record-card__tab--active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.record-card__panel {
+  margin-top: var(--sp-4);
+}
+
+.record-card__clipboard-note {
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  background: var(--surface-raised);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  line-height: 1.5;
+  text-transform: none;
+}
+
+.record-card__copy-error {
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  background: var(--surface-raised);
+  border: var(--border-w) solid var(--danger);
+  color: var(--danger);
+  font-size: var(--fs-ui);
+}
+
+.record-card__empty {
+  color: var(--text-faint);
+  font-size: var(--fs-ui);
+}
+
+.record-card__field + .record-card__field {
+  margin-top: var(--sp-3);
+}
+
+.record-card__field-label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-1);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.record-card__field-label-text {
+  display: block;
+  margin-bottom: var(--sp-1);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.record-card__field-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  background: var(--surface-raised);
+}
+
+.record-card__field-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-ui);
+  color: var(--text);
+}
+
+.record-card__field-value--mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  letter-spacing: 0.02em;
+}
+
+.record-card__field-btn {
+  flex: none;
+  padding: var(--sp-1) var(--sp-2);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-chip);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.record-card__field-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.record-card__field-btn:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
+}
+
+.record-card__note {
+  margin-top: var(--sp-4);
+}
+
+.record-card__note p {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.record-card__history {
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-card__history-entry {
+  padding: var(--sp-3);
+  border-radius: var(--r-field);
+  background: var(--surface-raised);
+}
+
+.record-card__history-entry + .record-card__history-entry {
+  margin-top: var(--sp-2);
+}
+
+.record-card__history-date {
+  display: block;
+  margin-bottom: var(--sp-2);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.record-card__history-field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.record-card__history-field + .record-card__history-field {
+  margin-top: var(--sp-1);
+}
+
+.record-card__history-field-name {
+  flex: none;
+  min-width: var(--history-field-name-w);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+}

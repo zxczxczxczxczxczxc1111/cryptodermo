@@ -1,0 +1,169 @@
+/*
+ * Список + карточка (тикет 07). Раскладка "строки слева, карточка справа"
+ * решена внутри этого компонента (см. комментарий в List.tsx) - ширина
+ * колонки списка задана здесь же локальной переменной, тем же приёмом, что
+ * и `--sidebar-w`/`--recent-w` в AppShell.css (структурная константа этого
+ * конкретного layout'а, не общий токен, но всё равно только через
+ * var(--...), R60).
+ */
+.list {
+  --list-rows-w: 380px;
+
+  display: grid;
+  grid-template-columns: var(--list-rows-w) 1fr;
+  height: 100%;
+  min-height: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+.list__rows-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-right: var(--border-w) solid var(--border);
+}
+
+.list__search {
+  flex: none;
+  padding: var(--sp-4);
+}
+
+.list__search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui-lg);
+  line-height: var(--lh-ui-lg);
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.list__search-input::placeholder {
+  color: var(--text-faint);
+}
+
+.list__search-input:focus-visible {
+  border-color: var(--border-strong);
+}
+
+.list__count {
+  flex: none;
+  margin: 0;
+  padding: 0 var(--sp-4) var(--sp-2);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.list__empty,
+.list__error {
+  flex: none;
+  margin: 0;
+  padding: var(--sp-6) var(--sp-4);
+  color: var(--text-faint);
+  font-size: var(--fs-ui);
+  text-align: center;
+}
+
+.list__error {
+  color: var(--danger);
+}
+
+.list__viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+}
+
+.list__spacer {
+  position: relative;
+}
+
+.list__row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-0);
+  padding: var(--sp-2) var(--sp-4);
+  border: none;
+  border-bottom: var(--border-w) solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.list__row:hover {
+  background: var(--surface-hover);
+}
+
+.list__row:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: -2px;
+}
+
+.list__row--active {
+  background: var(--accent-soft);
+}
+
+.list__row-title-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.list__row-dot {
+  flex: none;
+}
+
+.list__row-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-ui-lg);
+  line-height: var(--lh-ui-lg);
+}
+
+.list__row-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.list__detail {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.list__detail-placeholder {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-8);
+  color: var(--text-faint);
+  font-size: var(--fs-ui-lg);
+  text-align: center;
+}

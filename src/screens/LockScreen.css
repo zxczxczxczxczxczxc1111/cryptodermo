@@ -1,0 +1,156 @@
+/*
+ * Экран блокировки/создания базы (тикет 06). "Поле мастер-пароля по центру,
+ * --surface-raised, минимум обвязки, без заголовка «Добро пожаловать»" -
+ * дословно из брифа.
+ *
+ * Полноэкранный тёмный фон (--bg) - на этом месте позже появится
+ * canvas-анимация сети узлов (тикет 13, спецификация §16); пока это просто
+ * статичный фон тех же токенов, без спиннера/прогресс-бара (R75).
+ *
+ * Переходы здесь намеренно не используют --transition/--transition-fast из
+ * tokens.css - спецификация §7 прямо исключает экран блокировки из общего
+ * правила 150-200ms ease-out (R92), потому что сигнатурная анимация сети
+ * (тикет 13) будет жить по собственному таймингу (например, 400ms на успех,
+ * §16). Здесь анимации ещё нет, но и заимствовать общий тайминг раньше
+ * времени не стоит.
+ */
+
+.lock-screen {
+  /* Ширина панели - структурная константа этого конкретного экрана, не
+     переиспользуемый дизайн-токен, поэтому заведена как локальная
+     CSS-переменная здесь же, а не в tokens.css - тот же приём, что и
+     --sidebar-w/--recent-w в AppShell.css. */
+  --panel-w: 320px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg);
+  font-family: var(--font-ui);
+}
+
+.lock-screen__panel {
+  width: var(--panel-w);
+  max-width: calc(100vw - var(--sp-8) * 2);
+  padding: var(--sp-6);
+  border-radius: var(--r-card);
+  background: var(--surface-raised);
+  border: var(--border-w) solid var(--border);
+}
+
+.lock-screen__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.lock-screen__label {
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.lock-screen__input {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.lock-screen__input:focus-visible {
+  outline: var(--border-w) solid var(--accent);
+  outline-offset: var(--sp-0);
+}
+
+.lock-screen__submit {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  border: none;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+}
+
+.lock-screen__submit:disabled {
+  background: var(--surface-hover);
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.lock-screen__submit:focus-visible {
+  outline: var(--border-w) solid var(--accent);
+  outline-offset: var(--sp-1);
+}
+
+.lock-screen__status {
+  color: var(--text-dim);
+  font-size: var(--fs-ui);
+  text-align: center;
+}
+
+.lock-screen__error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  color: var(--danger);
+  font-size: var(--fs-ui);
+}
+
+/* Подсказка "пароли не совпадают" (ветка создания базы) - тот же цвет
+   ошибки, но inline под полем повтора, не отдельный блок с кнопкой. */
+.lock-screen__hint {
+  color: var(--danger);
+  font-size: var(--fs-ui);
+  margin: 0;
+}
+
+.lock-screen__recover {
+  align-self: flex-start;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+}
+
+.lock-screen__conflict {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  color: var(--text);
+  font-size: var(--fs-ui);
+}
+
+.lock-screen__conflict-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.lock-screen__conflict-actions button {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+}
+
+.lock-screen__conflict-actions label {
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}

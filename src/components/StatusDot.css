@@ -1,0 +1,19 @@
+.status-dot {
+  display: inline-block;
+  width: var(--dot-size);
+  height: var(--dot-size);
+  border-radius: 50%;
+  flex: none;
+}
+
+.status-dot--unsaved {
+  background: var(--accent);
+}
+
+.status-dot--staleBackup {
+  background: var(--warn);
+}
+
+.status-dot--oldPassword {
+  background: var(--danger);
+}

@@ -1,0 +1,85 @@
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-left: var(--border-w) solid var(--border);
+  background: var(--surface);
+}
+
+.recent-list__heading {
+  flex: none;
+  margin: 0;
+  padding: var(--sp-4) var(--sp-4) var(--sp-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.recent-list__items {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 var(--sp-2) var(--sp-6);
+  list-style: none;
+  overflow: hidden;
+
+  /* Нижние строки затухают в фон градиентной маской, а не обрываются
+     линией (R65). */
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 82%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 0%, black 82%, transparent 100%);
+}
+
+.recent-list__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border-radius: var(--r-field);
+  transition: background var(--transition);
+}
+
+.recent-list__row:hover {
+  background: var(--surface-hover);
+}
+
+.recent-list__dot {
+  margin-top: var(--sp-1);
+}
+
+.recent-list__dot--empty {
+  width: var(--dot-size);
+  height: var(--dot-size);
+  flex: none;
+}
+
+.recent-list__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-0);
+  min-width: 0;
+}
+
+.recent-list__title {
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-list__meta {
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

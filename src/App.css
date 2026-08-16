@@ -1,0 +1,62 @@
+/*
+ * Минимальный стиль ТОЛЬКО для временного отладочного экрана из этого
+ * тикета (см. App.tsx). Настоящий дизайн-язык (тёмная тема, токены,
+ * типографика) - предмет отдельного тикета §7/§8 спецификации, здесь его
+ * сознательно нет: этот экран целиком исчезнет, как только появятся
+ * реальные экраны приложения.
+ */
+:root {
+  font-family: system-ui, Arial, sans-serif;
+  font-size: 14px;
+  color: #0f0f0f;
+  background-color: #f6f6f6;
+}
+
+.debug-screen {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.debug-screen h1 {
+  font-size: 1.2rem;
+}
+
+.debug-screen section {
+  margin-bottom: 20px;
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.debug-screen label {
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+
+.debug-screen input,
+.debug-screen textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+
+.debug-screen button {
+  cursor: pointer;
+  padding: 6px 12px;
+  margin-right: 8px;
+}
+
+.debug-screen pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 10px;
+  border-radius: 4px;
+  max-height: 240px;
+  overflow: auto;
+}

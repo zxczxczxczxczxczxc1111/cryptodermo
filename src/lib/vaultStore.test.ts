@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { VaultStore, ItemNotFoundError, VaultNotLoadedError, MAX_BACKUPS } from "./vaultStore";
+import {
+  VaultStore,
+  ItemNotFoundError,
+  VaultNotLoadedError,
+  ItemCountDecreasedError,
+  MAX_BACKUPS,
+} from "./vaultStore";
 
 // Кросс-компат тест "emergency-decrypt.py <-> приложение" (interfaces.md) -
 // в отдельном файле `vaultStore.crossCompat.test.js`, не здесь. Ему нужны
@@ -340,6 +346,96 @@ describe("VaultStore: save() orchestration (backup -> write -> rotate)", () => {
     await store.save("D:/vault/vault.dat");
 
     expect(store.isDirty()).toBe(false);
+  });
+});
+
+describe("VaultStore: save() refuses a silent item-count decrease (R28)", () => {
+  // Общая подготовка для большинства тестов ниже: строим байты двухзаписной
+  // базы (через отдельный store, не участвующий в save()), затем открываем
+  // их в `loaded` через loadFromBytes() - именно это выставляет loadedCount
+  // (R28, §9: база сравнения - "при последней успешной загрузке"), не
+  // addItem/deleteItem сами по себе.
+  async function loadedStoreWithTwoItems(): Promise<{
+    loaded: VaultStore;
+    first: { id: string };
+    second: { id: string };
+  }> {
+    const seed = new VaultStore();
+    await seed.createNewVault("pw", 1000);
+    const first = seed.addItem({ type: "note", title: "a", tags: [], fields: [] });
+    const second = seed.addItem({ type: "note", title: "b", tags: [], fields: [] });
+
+    const loaded = new VaultStore();
+    await loaded.loadFromBytes(await seed.toBytes(), "pw");
+    return { loaded, first, second };
+  }
+
+  it("throws ItemCountDecreasedError and writes nothing to disk when the count dropped since the last load", async () => {
+    readVaultMock.mockRejectedValue(new Error("ENOENT"));
+    const { loaded, first } = await loadedStoreWithTwoItems();
+    loaded.deleteItem(first.id);
+
+    await expect(loaded.save("D:/vault/vault.dat")).rejects.toThrow(ItemCountDecreasedError);
+
+    expect(writeVaultAtomicMock).not.toHaveBeenCalled();
+  });
+
+  it("the rejected error carries the loaded and current counts", async () => {
+    const { loaded, first } = await loadedStoreWithTwoItems();
+    loaded.deleteItem(first.id);
+
+    await expect(loaded.save("D:/vault/vault.dat")).rejects.toMatchObject({
+      loaded: 2,
+      current: 1,
+    });
+  });
+
+  it("writes normally when allowCountDecrease is true", async () => {
+    readVaultMock.mockRejectedValue(new Error("ENOENT"));
+    const { loaded, first } = await loadedStoreWithTwoItems();
+    loaded.deleteItem(first.id);
+
+    await expect(
+      loaded.save("D:/vault/vault.dat", { allowCountDecrease: true }),
+    ).resolves.toBeUndefined();
+
+    const vaultDatWrites = writeVaultAtomicMock.mock.calls.filter(([path]) =>
+      path.endsWith("vault.dat"),
+    );
+    expect(vaultDatWrites).toHaveLength(1);
+  });
+
+  it("after a confirmed decrease, the next comparison is against the new (lower) count", async () => {
+    readVaultMock.mockRejectedValue(new Error("ENOENT"));
+    const { loaded, first, second } = await loadedStoreWithTwoItems();
+    loaded.deleteItem(first.id);
+
+    // Первое уменьшение (2 -> 1) подтверждено.
+    await loaded.save("D:/vault/vault.dat", { allowCountDecrease: true });
+    writeVaultAtomicMock.mockClear();
+
+    // Второе уменьшение (1 -> 0), уже относительно нового loadedCount=1 -
+    // должно снова потребовать подтверждения, не пройти молча только
+    // потому что когда-то давно было подтверждено первое.
+    loaded.deleteItem(second.id);
+    await expect(loaded.save("D:/vault/vault.dat")).rejects.toMatchObject({
+      loaded: 1,
+      current: 0,
+    });
+    expect(writeVaultAtomicMock).not.toHaveBeenCalled();
+  });
+
+  it("does not throw when the count stays the same or grows", async () => {
+    readVaultMock.mockRejectedValue(new Error("ENOENT"));
+    const store = new VaultStore();
+    await store.createNewVault("pw", 1000);
+    store.addItem({ type: "note", title: "a", tags: [], fields: [] });
+    const loaded = new VaultStore();
+    await loaded.loadFromBytes(await store.toBytes(), "pw");
+
+    loaded.addItem({ type: "note", title: "b", tags: [], fields: [] });
+
+    await expect(loaded.save("D:/vault/vault.dat")).resolves.toBeUndefined();
   });
 });
 

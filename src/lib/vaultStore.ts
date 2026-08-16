@@ -132,6 +132,34 @@ export class VaultNotLoadedError extends Error {
   }
 }
 
+/**
+ * R28: число записей уменьшилось относительно последней успешной загрузки
+ * (`loadFromBytes`/`createNewVault`, включая повторный вызов при
+ * восстановлении из бэкапа) - `save()` отказывается писать на диск, не
+ * спросив явного подтверждения (`opts.allowCountDecrease`), чтобы случайное
+ * массовое удаление (или баг где-то выше по стеку) не могло молча
+ * перезаписать боевой файл усечённой коллекцией. UI (диалог «было N,
+ * стало M», тикет 06/07/08 - не этот модуль) читает `loaded`/`current` для
+ * текста диалога и, если пользователь подтвердил, вызывает `save()` ещё раз
+ * с `{ allowCountDecrease: true }`.
+ */
+export class ItemCountDecreasedError extends Error {
+  /** Число записей на момент последней успешной загрузки. */
+  readonly loaded: number;
+  /** Текущее число записей в сторе (то, что попыталось сохраниться). */
+  readonly current: number;
+
+  constructor(loaded: number, current: number) {
+    super(
+      `Item count decreased since last load: was ${loaded}, now ${current} - ` +
+        `call save() again with { allowCountDecrease: true } to confirm`,
+    );
+    this.name = "ItemCountDecreasedError";
+    this.loaded = loaded;
+    this.current = current;
+  }
+}
+
 /** Сколько последних резервных копий хранится (R23, R46, дословно из
  * брифа - "последние N штук (20)"). */
 export const MAX_BACKUPS = 20;
@@ -222,6 +250,16 @@ export class VaultStore {
   private key: CryptoKey | null = null;
   private kdfInfo: KdfInfo | null = null;
   private dirty = false;
+  /**
+   * Число записей на момент последней успешной загрузки (R28, §9 - "база
+   * сравнения - при последней успешной загрузке", не момент открытия
+   * какого-то экрана и не исходная загрузка при старте сессии). `null` до
+   * первого `loadFromBytes`/`createNewVault`. Выставляется этими двумя
+   * методами и обновляется каждым успешным `save()` - так следующее
+   * сравнение идёт от точки последнего сохранения/загрузки, а не бесконечно
+   * от самой первой загрузки за сессию.
+   */
+  private loadedCount: number | null = null;
 
   /** Есть ли в сторе несохранённые изменения (флаг из interfaces.md). Ложь
    * сразу после `loadFromBytes`/`createNewVault`/успешного `save()`. */
@@ -274,6 +312,7 @@ export class VaultStore {
       cipher: "AES-256-GCM",
     };
     this.dirty = false;
+    this.loadedCount = this.items.length;
   }
 
   /**
@@ -322,6 +361,7 @@ export class VaultStore {
       cipher: header.cipher,
     };
     this.dirty = false;
+    this.loadedCount = this.items.length;
   }
 
   /**
@@ -470,6 +510,15 @@ export class VaultStore {
 
   /**
    * Оркестрация сохранения на диск (spec.md §5, дословно из брифа):
+   * 0. R28 (история 11, §9): если число записей сейчас меньше, чем было при
+   *    последней успешной загрузке (`loadedCount`), и вызывающий код явно не
+   *    подтвердил уменьшение (`opts.allowCountDecrease`) - бросить
+   *    `ItemCountDecreasedError` и НЕ писать на диск вообще ничего (ни
+   *    бэкап, ни новую версию файла, ни emergency-скрипты) - fail closed,
+   *    как того требует "не сохранять молча". Диалог "было N, стало M" -
+   *    забота UI (тикеты 06-10), этот метод только даёт `loaded`/`current`
+   *    через поля ошибки и точку, где повторный вызов с подтверждением
+   *    пройдёт;
    * 1. если по `path` уже лежит файл - скопировать его как есть в
    *    `backups/vault-<ISO8601>.dat` (текущая, ещё не изменённая версия);
    * 2. записать новую версию (`toBytes()`) атомарно в `path`;
@@ -488,10 +537,22 @@ export class VaultStore {
    * на диске к этому моменту, лишний бэкап, оставшийся сверх лимита, не
    * нарушает приоритет 1 (данные не теряются). Ошибка только логируется.
    *
-   * После успешного шага 2 `isDirty()` становится `false`.
+   * После успешной записи новой версии (шаг 2) `isDirty()` становится
+   * `false` и `loadedCount` переустанавливается на новое `this.items.length`
+   * - следующая проверка уменьшения идёт от ЭТОЙ точки (последнее успешное
+   * сохранение), не бесконечно от самой первой загрузки за сессию.
    */
-  async save(path: string): Promise<void> {
+  async save(path: string, opts?: { allowCountDecrease?: boolean }): Promise<void> {
     this.assertLoaded();
+
+    if (
+      this.loadedCount !== null &&
+      this.items.length < this.loadedCount &&
+      !opts?.allowCountDecrease
+    ) {
+      throw new ItemCountDecreasedError(this.loadedCount, this.items.length);
+    }
+
     const backupsDir = backupsDirFor(path);
 
     let existingBytes: Uint8Array | null;
@@ -511,6 +572,7 @@ export class VaultStore {
 
     const newBytes = await this.toBytes();
     await writeVaultAtomic(path, newBytes);
+    this.loadedCount = this.items.length;
 
     await this.copyEmergencyScriptsTo(dirOf(path));
 

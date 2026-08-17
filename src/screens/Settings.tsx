@@ -35,6 +35,7 @@ import { deriveKey, encrypt, decrypt, DecryptError } from "../lib/crypto";
 import { serializeContainer, parseContainer, FormatError, type VaultHeader } from "../lib/vaultFormat";
 import { readVault } from "../lib/tauriApi";
 import { readSettings, updateSettings, DEFAULT_AUTO_LOCK_TIMEOUT_MS } from "../lib/settingsConfig";
+import { isValidPinFormat, setUpPin, resetPinLockout, PIN_MAX_LENGTH } from "../lib/pinLock";
 import "../tokens.css";
 import "./Settings.css";
 
@@ -177,7 +178,116 @@ export async function changeMasterPassword(params: {
     return { ok: false, message: PASSWORD_CHANGE_SAVE_ERROR_MESSAGE };
   }
 
+  // Смена мастер-пароля инвалидирует PIN (задание, фича PIN-кода): старая
+  // PinWrap (если PIN был настроен) держит байты СТАРОГО ключа хранилища -
+  // после смены пароля они больше не совпадают с реальным ключом, использовать
+  // её нельзя. Единственный корректный ответ - сброс, не попытка
+  // "перешифровать" обёртку заново здесь же (пользователь явно не вводил PIN
+  // в этой форме - настраивать его заново без спроса было бы неожиданно).
+  // Best-effort: неудача этой записи не должна откатывать уже свершившуюся,
+  // куда более важную смену самого мастер-пароля (тот же принцип, что у
+  // copyEmergencyScriptsTo/rotateBackups в vaultStore.ts - вторичная запись,
+  // ошибка только логируется).
+  try {
+    await updateSettings(vaultPath, { pin: undefined, pinLockout: undefined });
+  } catch (err) {
+    console.error("Settings: failed to clear PIN settings after changing the master password", err);
+  }
+
   return { ok: true, store: newStore };
+}
+
+/** Единая ошибка проверки текущего мастер-пароля для операций с PIN - тот же
+ * принцип R94.1, что и `CURRENT_PASSWORD_VERIFY_ERROR_MESSAGE` выше. */
+export const PIN_TOGGLE_PASSWORD_ERROR_MESSAGE =
+  "Не удалось подтвердить текущий пароль: пароль неверен или файл базы повреждён";
+export const PIN_TOGGLE_MISMATCH_MESSAGE = "PIN и повтор не совпадают";
+export const PIN_TOGGLE_FORMAT_ERROR_MESSAGE = "PIN должен состоять только из цифр (4-8 символов)";
+
+export type PinToggleResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * Проверить, что `password` - актуальный мастер-пароль базы на ДИСКЕ (не
+ * доверяет памяти `store`, может быть открыт раньше) - та же реальная
+ * расшифровка тела, что и первый шаг `changeMasterPassword` выше. Возвращает
+ * разобранный `header`, только когда пароль подтверждён, чтобы вызывающий
+ * код (`enableOrChangePin`) мог переиспользовать соль/итерации базы для
+ * `pinLock.setUpPin`, не читая и не разбирая файл повторно. Приватная функция
+ * этого модуля (не экспортируется) - `changeMasterPassword` не переведена на
+ * неё намеренно, чтобы не трогать уже проверенный, отдельно протестированный
+ * код без необходимости (CLAUDE.md §4, "не делай несвязанных правок").
+ */
+async function verifyCurrentMasterPassword(
+  vaultPath: string,
+  password: string,
+): Promise<{ ok: true; header: VaultHeader } | { ok: false }> {
+  const diskBytes = await readVault(vaultPath);
+  let header: VaultHeader;
+  let ciphertext: Uint8Array;
+  try {
+    ({ header, ciphertext } = parseContainer(diskBytes));
+  } catch (err) {
+    if (err instanceof FormatError) return { ok: false };
+    throw err;
+  }
+  const key = await deriveKey(password, base64ToBytes(header.kdf.salt), header.kdf.params.iterations);
+  try {
+    await decrypt(key, base64ToBytes(header.iv), ciphertext);
+  } catch (err) {
+    if (err instanceof DecryptError) return { ok: false };
+    throw err;
+  }
+  return { ok: true, header };
+}
+
+/**
+ * Включить или изменить PIN (задание: "Включение и изменение ТРЕБУЮТ
+ * повторного ввода текущего мастер-пароля") - проверка идёт по реальному
+ * файлу на диске (`verifyCurrentMasterPassword`), тот же принцип, что у
+ * `changeMasterPassword`. При успехе строит новую `PinWrap`
+ * (`pinLock.setUpPin`) той же солью/итерациями, что в заголовке базы на
+ * диске, и записывает её в `vault.settings.json` вместе со сбросом
+ * `pinLockout` (включение/изменение PIN - разумная точка обнулить лимит
+ * неверных попыток, старый счётчик относился к прежнему PIN).
+ */
+export async function enableOrChangePin(params: {
+  vaultPath: string;
+  masterPassword: string;
+  pin: string;
+  pinConfirm: string;
+}): Promise<PinToggleResult> {
+  const { vaultPath, masterPassword, pin, pinConfirm } = params;
+  if (!isValidPinFormat(pin)) {
+    return { ok: false, message: PIN_TOGGLE_FORMAT_ERROR_MESSAGE };
+  }
+  if (pin !== pinConfirm) {
+    return { ok: false, message: PIN_TOGGLE_MISMATCH_MESSAGE };
+  }
+
+  const verified = await verifyCurrentMasterPassword(vaultPath, masterPassword);
+  if (!verified.ok) {
+    return { ok: false, message: PIN_TOGGLE_PASSWORD_ERROR_MESSAGE };
+  }
+
+  const salt = base64ToBytes(verified.header.kdf.salt);
+  const wrap = await setUpPin(masterPassword, salt, verified.header.kdf.params.iterations, pin);
+  await updateSettings(vaultPath, { pin: wrap, pinLockout: resetPinLockout() });
+  return { ok: true };
+}
+
+/**
+ * Выключить PIN (задание: "Выключение PIN - тоже за мастер-паролем (не за
+ * самим PIN - иначе кто угодно с PIN сможет его же и отключить)"). Просто
+ * сброс `pin`/`pinLockout` - PIN, если пользователь позже захочет, настраивается
+ * заново (та же логика, что и после смены мастер-пароля выше).
+ */
+export async function disablePin(params: { vaultPath: string; masterPassword: string }): Promise<PinToggleResult> {
+  const verified = await verifyCurrentMasterPassword(params.vaultPath, params.masterPassword);
+  if (!verified.ok) {
+    return { ok: false, message: PIN_TOGGLE_PASSWORD_ERROR_MESSAGE };
+  }
+  await updateSettings(params.vaultPath, { pin: undefined, pinLockout: undefined });
+  return { ok: true };
 }
 
 /** Перевод таймаута между минутами (что видит пользователь) и миллисекундами
@@ -239,11 +349,21 @@ export function Settings({ store, vaultPath, onPasswordChanged, onAutoLockTimeou
   const [pathError, setPathError] = useState<string | null>(null);
   const [pathSaved, setPathSaved] = useState(false);
 
+  // --- вход по PIN ---
+  const [pinConfigured, setPinConfigured] = useState(false);
+  const [pinMasterPassword, setPinMasterPassword] = useState("");
+  const [pinValue, setPinValue] = useState("");
+  const [pinConfirmValue, setPinConfirmValue] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinStatusMessage, setPinStatusMessage] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     readSettings(vaultPath).then((settings) => {
       if (cancelled) return;
       setAutoLockMinutes(msToMinutes(settings.autoLockTimeoutMs));
+      setPinConfigured(Boolean(settings.pin));
     });
     setPathInput(vaultPath);
     return () => {
@@ -268,6 +388,15 @@ export function Settings({ store, vaultPath, onPasswordChanged, onAutoLockTimeou
         setNewPassword("");
         setConfirmPassword("");
         setPasswordChanged(true);
+        // changeMasterPassword всегда сбрасывает pin/pinLockout на диске
+        // (см. её комментарий) - синхронизируем локальное состояние раздела
+        // "Вход по PIN" сразу же, не дожидаясь следующего маунта/смены
+        // vaultPath (тот же путь к файлу не меняется сменой пароля, поэтому
+        // useEffect на [vaultPath] здесь сам по себе не перечитает
+        // vault.settings.json). Без этого кнопка ниже ошибочно продолжала бы
+        // называться "Изменить PIN" вместо "Включить PIN" сразу после смены
+        // пароля, хотя PIN уже фактически сброшен.
+        setPinConfigured(false);
         onPasswordChanged(result.store, vaultPath);
       } else {
         setPasswordError(result.message);
@@ -313,6 +442,70 @@ export function Settings({ store, vaultPath, onPasswordChanged, onAutoLockTimeou
       setPathError(UNEXPECTED_ERROR_MESSAGE);
     } finally {
       setPathBusy(false);
+    }
+  }
+
+  /** Включить или изменить PIN - требует текущий мастер-пароль (задание:
+   * тот же принцип разделения "мастер-пароль для смены доступов, PIN для
+   * входа"). Общее поле мастер-пароля (`pinMasterPassword`) обслуживает и
+   * эту кнопку, и "Выключить PIN" ниже - обе операции требуют одного и того
+   * же подтверждения. */
+  async function handleEnableOrChangePin(e: FormEvent) {
+    e.preventDefault();
+    if (pinBusy) return;
+    setPinError(null);
+    setPinStatusMessage(null);
+    setPinBusy(true);
+    try {
+      const wasConfigured = pinConfigured;
+      const result = await enableOrChangePin({
+        vaultPath,
+        masterPassword: pinMasterPassword,
+        pin: pinValue,
+        pinConfirm: pinConfirmValue,
+      });
+      if (result.ok) {
+        setPinConfigured(true);
+        setPinMasterPassword("");
+        setPinValue("");
+        setPinConfirmValue("");
+        setPinStatusMessage(wasConfigured ? "PIN обновлён" : "PIN включён");
+      } else {
+        setPinError(result.message);
+      }
+    } catch (err) {
+      console.error("Settings: unexpected error while enabling/changing the PIN", err);
+      setPinError(UNEXPECTED_ERROR_MESSAGE);
+    } finally {
+      setPinBusy(false);
+    }
+  }
+
+  /** Выключить PIN - тоже за мастер-паролем, не за самим PIN (задание: "иначе
+   * кто угодно с PIN сможет его же и отключить"). Не форма (нет своего
+   * submit) - использует то же поле мастер-пароля, что и включение/изменение
+   * выше, отдельная кнопка внутри общей формы. */
+  async function handleDisablePin() {
+    if (pinBusy) return;
+    setPinError(null);
+    setPinStatusMessage(null);
+    setPinBusy(true);
+    try {
+      const result = await disablePin({ vaultPath, masterPassword: pinMasterPassword });
+      if (result.ok) {
+        setPinConfigured(false);
+        setPinMasterPassword("");
+        setPinValue("");
+        setPinConfirmValue("");
+        setPinStatusMessage("PIN выключен");
+      } else {
+        setPinError(result.message);
+      }
+    } catch (err) {
+      console.error("Settings: unexpected error while disabling the PIN", err);
+      setPinError(UNEXPECTED_ERROR_MESSAGE);
+    } finally {
+      setPinBusy(false);
     }
   }
 
@@ -452,6 +645,83 @@ export function Settings({ store, vaultPath, onPasswordChanged, onAutoLockTimeou
           {pathError && (
             <p className="settings__error" role="alert">
               {pathError}
+            </p>
+          )}
+        </form>
+
+        <form className="settings__section" onSubmit={handleEnableOrChangePin}>
+          <h2 className="settings__section-title">Вход по PIN</h2>
+          <p className="settings__hint">
+            {pinConfigured
+              ? "PIN настроен и используется для повседневного входа. Изменение и выключение требуют текущего мастер-пароля."
+              : "PIN-код позволяет открывать уже созданную базу без мастер-пароля при следующих запусках. Настройка требует текущего мастер-пароля."}
+          </p>
+          <label className="settings__label" htmlFor="settings-pin-master-password">
+            Текущий мастер-пароль
+          </label>
+          <input
+            id="settings-pin-master-password"
+            type="password"
+            className="settings__input"
+            value={pinMasterPassword}
+            onChange={(e) => setPinMasterPassword(e.currentTarget.value)}
+            disabled={pinBusy}
+          />
+          <label className="settings__label" htmlFor="settings-pin-value">
+            {pinConfigured ? "Новый PIN-код" : "PIN-код"}
+          </label>
+          <input
+            id="settings-pin-value"
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={PIN_MAX_LENGTH}
+            className="settings__input settings__input--narrow"
+            value={pinValue}
+            onChange={(e) => setPinValue(e.currentTarget.value.replace(/\D/g, ""))}
+            disabled={pinBusy}
+          />
+          <label className="settings__label" htmlFor="settings-pin-confirm">
+            Повторите PIN-код
+          </label>
+          <input
+            id="settings-pin-confirm"
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={PIN_MAX_LENGTH}
+            className="settings__input settings__input--narrow"
+            value={pinConfirmValue}
+            onChange={(e) => setPinConfirmValue(e.currentTarget.value.replace(/\D/g, ""))}
+            disabled={pinBusy}
+          />
+          <div className="settings__row">
+            <button
+              type="submit"
+              className="settings__submit"
+              disabled={
+                pinBusy || pinMasterPassword.length === 0 || pinValue.length === 0 || pinConfirmValue.length === 0
+              }
+            >
+              {pinBusy ? "Сохраняю PIN..." : pinConfigured ? "Изменить PIN" : "Включить PIN"}
+            </button>
+            {pinConfigured && (
+              <button
+                type="button"
+                className="settings__submit"
+                onClick={() => void handleDisablePin()}
+                disabled={pinBusy || pinMasterPassword.length === 0}
+              >
+                Выключить PIN
+              </button>
+            )}
+            <span className="settings__status" aria-live="polite">
+              {pinStatusMessage ?? ""}
+            </span>
+          </div>
+          {pinError && (
+            <p className="settings__error" role="alert">
+              {pinError}
             </p>
           )}
         </form>

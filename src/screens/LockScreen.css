@@ -94,6 +94,15 @@
   outline-offset: var(--sp-0);
 }
 
+/* Поле ввода PIN (фича PIN-кода) - короче обычного поля пароля (задание:
+   "короткое поле") и с разрядкой цифр для читаемости кода, тот же
+   моноширинный шрифт/токены, что и у .lock-screen__input. */
+.lock-screen__input--pin {
+  max-width: 140px;
+  letter-spacing: 6px;
+  text-align: center;
+}
+
 .lock-screen__submit {
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-field);

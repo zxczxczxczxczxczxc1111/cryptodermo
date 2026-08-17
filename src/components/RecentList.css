@@ -46,6 +46,25 @@
   background: var(--surface-hover);
 }
 
+/* Кликабельная строка (onSelect передан, App.tsx) - реальный <button>
+   вместо <div>, тот же паттерн, что .list__row в List.tsx: полный сброс
+   стилей кнопки браузера, ширина/выравнивание/шрифт наследуются от
+   .recent-list__row выше. */
+.recent-list__row--btn {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent-list__row--btn:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: -2px;
+}
+
 .recent-list__dot {
   margin-top: var(--sp-1);
 }

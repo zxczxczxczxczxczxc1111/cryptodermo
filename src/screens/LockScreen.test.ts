@@ -14,14 +14,23 @@ vi.mock("../lib/tauriApi", () => ({
 
 import { readVault, writeVaultAtomic, listBackups, rotateBackups } from "../lib/tauriApi";
 import { VaultStore } from "../lib/vaultStore";
+import { parseContainer } from "../lib/vaultFormat";
+import { setUpPin, PIN_LOCKOUT_DURATION_MS, type PinWrap } from "../lib/pinLock";
 import {
   checkExistingVault,
   submitUnlock,
   submitCreate,
   submitRecovery,
+  submitPinUnlock,
+  submitPinSetup,
+  pinLockoutRemainingMs,
+  formatPinLockoutMessage,
   UNLOCK_ERROR_MESSAGE,
   CREATE_SAVE_ERROR_MESSAGE,
   PASSWORD_MISMATCH_MESSAGE,
+  PIN_UNLOCK_ERROR_MESSAGE,
+  PIN_FORMAT_ERROR_MESSAGE,
+  PIN_SETUP_MISMATCH_MESSAGE,
   NETWORK_NODE_COUNT,
   SUCCESS_DISPERSE_MS,
   nodePositionAt,
@@ -370,5 +379,139 @@ describe("isMotionAllowed (prefers-reduced-motion - R78)", () => {
   it("defaults to allowing animation when the preference could not be read", () => {
     expect(isMotionAllowed(undefined)).toBe(true);
     expect(isMotionAllowed(null)).toBe(true);
+  });
+});
+
+describe("submitPinUnlock (PIN-разблокировка существующей базы)", () => {
+  async function vaultWithPin(password: string, pin: string): Promise<{ bytes: Uint8Array; wrap: PinWrap }> {
+    const store = new VaultStore();
+    await store.createNewVault(password, 1000);
+    store.addItem({ type: "login", title: "GitHub", tags: [], fields: [] });
+    const bytes = await store.toBytes();
+    const { header } = parseContainer(bytes);
+    const salt = Uint8Array.from(atob(header.kdf.salt), (c) => c.charCodeAt(0));
+    const wrap = await setUpPin(password, salt, header.kdf.params.iterations, pin);
+    return { bytes, wrap };
+  }
+
+  it("calls onUnlock with a usable VaultStore when the PIN is correct", async () => {
+    const { bytes, wrap } = await vaultWithPin("correct horse battery staple", "4242");
+    const onUnlock = vi.fn();
+
+    const result = await submitPinUnlock({
+      existingBytes: bytes,
+      pinWrap: wrap,
+      pin: "4242",
+      vaultPath: "D:/vault/vault.dat",
+      onUnlock,
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(onUnlock).toHaveBeenCalledTimes(1);
+    const [calledStore, calledPath] = onUnlock.mock.calls[0];
+    expect(calledPath).toBe("D:/vault/vault.dat");
+    expect(calledStore).toBeInstanceOf(VaultStore);
+    expect(calledStore.search("")).toMatchObject([{ title: "GitHub" }]);
+  });
+
+  it("does not call onUnlock and returns the unified error text on a wrong PIN", async () => {
+    const { bytes, wrap } = await vaultWithPin("correct horse battery staple", "4242");
+    const onUnlock = vi.fn();
+
+    const result = await submitPinUnlock({
+      existingBytes: bytes,
+      pinWrap: wrap,
+      pin: "9999",
+      vaultPath: "D:/vault/vault.dat",
+      onUnlock,
+    });
+
+    expect(result).toEqual({ ok: false, message: PIN_UNLOCK_ERROR_MESSAGE });
+    expect(onUnlock).not.toHaveBeenCalled();
+  });
+
+  it("returns the SAME unified error text when the wrap no longer matches the file (e.g. stale PIN)", async () => {
+    // Симулирует ситуацию "мастер-пароль сменили, PIN не сбросили" -
+    // wrap настроен на пароль A, файл на диске - под паролем B.
+    const { wrap } = await vaultWithPin("password A", "4242");
+    const { bytes: otherVaultBytes } = await vaultWithPin("password B", "4242");
+    const onUnlock = vi.fn();
+
+    const result = await submitPinUnlock({
+      existingBytes: otherVaultBytes,
+      pinWrap: wrap,
+      pin: "4242",
+      vaultPath: "D:/vault/vault.dat",
+      onUnlock,
+    });
+
+    expect(result).toEqual({ ok: false, message: PIN_UNLOCK_ERROR_MESSAGE });
+    expect(onUnlock).not.toHaveBeenCalled();
+  });
+});
+
+describe("submitPinSetup (настройка PIN сразу после создания/разблокировки)", () => {
+  it("returns a PinWrap that later unlocks the exact same vault bytes via loadFromBytesWithRawKey", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("correct horse battery staple", 1000);
+    store.addItem({ type: "login", title: "GitHub", tags: [], fields: [] });
+    const bytes = await store.toBytes();
+
+    const result = await submitPinSetup({
+      fileBytes: bytes,
+      vaultPassword: "correct horse battery staple",
+      pin: "1357",
+      pinConfirm: "1357",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok:true");
+
+    const { unwrapVaultKeyWithPin } = await import("../lib/pinLock");
+    const raw = await unwrapVaultKeyWithPin(result.wrap, "1357");
+    const reopened = new VaultStore();
+    await reopened.loadFromBytesWithRawKey(bytes, raw);
+    expect(reopened.search("")).toMatchObject([{ title: "GitHub" }]);
+  });
+
+  it("rejects a malformed PIN without deriving anything", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("pw", 1000);
+    const bytes = await store.toBytes();
+
+    const result = await submitPinSetup({ fileBytes: bytes, vaultPassword: "pw", pin: "12", pinConfirm: "12" });
+
+    expect(result).toEqual({ ok: false, message: PIN_FORMAT_ERROR_MESSAGE });
+  });
+
+  it("rejects a PIN / confirm mismatch", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("pw", 1000);
+    const bytes = await store.toBytes();
+
+    const result = await submitPinSetup({ fileBytes: bytes, vaultPassword: "pw", pin: "1234", pinConfirm: "4321" });
+
+    expect(result).toEqual({ ok: false, message: PIN_SETUP_MISMATCH_MESSAGE });
+  });
+});
+
+describe("pinLockoutRemainingMs / formatPinLockoutMessage", () => {
+  it("is 0 when there is no lockout state", () => {
+    expect(pinLockoutRemainingMs(undefined, new Date())).toBe(0);
+  });
+
+  it("counts down to 0 as `now` approaches lockedUntil", () => {
+    const now = new Date("2026-08-16T12:00:00.000Z");
+    const state = { failedAttempts: 3, lockedUntil: new Date(now.getTime() + PIN_LOCKOUT_DURATION_MS).toISOString() };
+
+    expect(pinLockoutRemainingMs(state, now)).toBe(PIN_LOCKOUT_DURATION_MS);
+    expect(pinLockoutRemainingMs(state, new Date(now.getTime() + PIN_LOCKOUT_DURATION_MS))).toBe(0);
+    expect(pinLockoutRemainingMs(state, new Date(now.getTime() + PIN_LOCKOUT_DURATION_MS + 5000))).toBe(0);
+  });
+
+  it("formats the remaining time rounded UP to whole minutes, never showing 0 while still locked", () => {
+    expect(formatPinLockoutMessage(10 * 60_000)).toBe("Слишком много попыток. Попробуйте через 10 мин.");
+    expect(formatPinLockoutMessage(30_000)).toBe("Слишком много попыток. Попробуйте через 1 мин.");
+    expect(formatPinLockoutMessage(1)).toBe("Слишком много попыток. Попробуйте через 1 мин.");
   });
 });

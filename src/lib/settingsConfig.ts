@@ -16,8 +16,16 @@
  * чтения одного поля, это осознанное дублирование, задокументированное в
  * interfaces.md, не ошибка. Этот модуль - полноценный владелец файла: читает
  * оба поля и умеет писать.
+ *
+ * Фича PIN-кода (см. `pinLock.ts`) добавляет сюда три необязательных поля -
+ * `pin`/`pinLockout`/`pinSetupOffered` (ниже в `VaultSettings`). Как и
+ * `autoLockTimeoutMs`/`lastVaultPath`, они независимы друг от друга и от уже
+ * существующих полей: отсутствие/некорректность любого одного не мешает
+ * прочитать остальные, а старые файлы без этих полей - валидное состояние
+ * ("PIN не настроен"), не ошибка.
  */
 import { readVault, writeVaultAtomic } from "./tauriApi";
+import type { PinWrap, PinLockoutState } from "./pinLock";
 
 const SETTINGS_FILENAME = "vault.settings.json";
 
@@ -34,6 +42,17 @@ export type VaultSettings = {
   autoLockTimeoutMs: number;
   /** Путь к последней открытой базе, или `null`, если ещё не сохранялась. */
   lastVaultPath: string | null;
+  /** PIN-обёртка реального ключа хранилища (см. `pinLock.ts`) - `undefined`,
+   * если PIN не настроен. Инвалидируется (сбрасывается) сменой мастер-пароля
+   * (`Settings.tsx`, `changeMasterPassword`) - старая обёртка держит байты
+   * СТАРОГО ключа. */
+  pin?: PinWrap;
+  /** Лимит неверных попыток PIN (см. `pinLock.ts`) - `undefined`, если PIN
+   * ни разу не настраивался или блокировки ещё не было. */
+  pinLockout?: PinLockoutState;
+  /** Одноразовое предложение настроить PIN уже показано - не спамить им на
+   * каждой разблокировке (`LockScreen.tsx`). */
+  pinSetupOffered?: boolean;
 };
 
 /** Значения по умолчанию - используются целиком, когда файла ещё нет, и
@@ -42,6 +61,32 @@ export const DEFAULT_SETTINGS: VaultSettings = {
   autoLockTimeoutMs: DEFAULT_AUTO_LOCK_TIMEOUT_MS,
   lastVaultPath: null,
 };
+
+/** `value` выглядит как валидный `PinWrap` - все четыре поля нужной формы.
+ * Некорректная/неполная форма трактуется как "PIN не настроен" (`undefined`),
+ * не как ошибка чтения всего файла - тот же принцип независимости полей, что
+ * и у `autoLockTimeoutMs`/`lastVaultPath` выше. */
+function isValidPinWrap(value: unknown): value is PinWrap {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.salt === "string" &&
+    typeof obj.iterations === "number" &&
+    Number.isFinite(obj.iterations) &&
+    typeof obj.iv === "string" &&
+    typeof obj.wrappedKey === "string"
+  );
+}
+
+/** `value` выглядит как валидный `PinLockoutState`. Некорректная форма -
+ * "блокировки нет" (`undefined`), тот же принцип, что и у `isValidPinWrap`. */
+function isValidPinLockoutState(value: unknown): value is PinLockoutState {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.failedAttempts !== "number" || !Number.isFinite(obj.failedAttempts)) return false;
+  if (obj.lockedUntil !== null && typeof obj.lockedUntil !== "string") return false;
+  return true;
+}
 
 /** Каталог файла из полного пути - копия той же маленькой утилиты, что уже
  * есть в vaultStore.ts/useAutoLock.ts (см. их комментарии: между модулями
@@ -94,7 +139,12 @@ export async function readSettings(vaultPath: string): Promise<VaultSettings> {
 
     const lastVaultPath = typeof obj.lastVaultPath === "string" ? obj.lastVaultPath : null;
 
-    return { autoLockTimeoutMs, lastVaultPath };
+    const settings: VaultSettings = { autoLockTimeoutMs, lastVaultPath };
+    if (isValidPinWrap(obj.pin)) settings.pin = obj.pin;
+    if (isValidPinLockoutState(obj.pinLockout)) settings.pinLockout = obj.pinLockout;
+    if (typeof obj.pinSetupOffered === "boolean") settings.pinSetupOffered = obj.pinSetupOffered;
+
+    return settings;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

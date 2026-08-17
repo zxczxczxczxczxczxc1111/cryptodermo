@@ -9,6 +9,7 @@ import {
   MAX_VAULT_SIZE_BYTES,
   type Item,
 } from "./vaultStore";
+import { parseContainer } from "./vaultFormat";
 
 // Кросс-компат тест "emergency-decrypt.py <-> приложение" (interfaces.md) -
 // в отдельном файле `vaultStore.crossCompat.test.js`, не здесь. Ему нужны
@@ -76,6 +77,64 @@ describe("VaultStore: createNewVault -> toBytes -> loadFromBytes roundtrip", () 
     await expect(reopened.loadFromBytes(bytes, "wrong password")).rejects.toThrow(
       /wrong password|corrupted/i,
     );
+  });
+});
+
+describe("VaultStore: loadFromBytesWithRawKey (PIN unlock path)", () => {
+  it("opens the vault when given the SAME raw key bits the password would derive", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("correct horse battery staple", 1000);
+    store.addItem({ type: "login", title: "GitHub", tags: ["work"], fields: [] });
+    const bytes = await store.toBytes();
+
+    // Симулирует то, что делает pinLock.ts: независимая передеривация тех
+    // же 256 бит из пароля/соли/итераций заголовка через deriveBits, не
+    // через VaultStore.key.
+    const { header } = parseContainer(bytes);
+    const salt = Uint8Array.from(atob(header.kdf.salt), (c) => c.charCodeAt(0));
+    const passwordKey = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode("correct horse battery staple"),
+      "PBKDF2",
+      false,
+      ["deriveBits"],
+    );
+    const rawBits = new Uint8Array(
+      await crypto.subtle.deriveBits(
+        { name: "PBKDF2", salt: salt as BufferSource, iterations: header.kdf.params.iterations, hash: "SHA-256" },
+        passwordKey,
+        256,
+      ),
+    );
+
+    const reopened = new VaultStore();
+    await reopened.loadFromBytesWithRawKey(bytes, rawBits);
+
+    expect(reopened.search("")).toMatchObject([{ title: "GitHub", tags: ["work"] }]);
+  });
+
+  it("throws DecryptError when the raw key bits do not match the vault's real key", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("pw", 1000);
+    store.addItem({ type: "note", title: "n", tags: [], fields: [] });
+    const bytes = await store.toBytes();
+
+    const wrongBits = crypto.getRandomValues(new Uint8Array(32));
+
+    const reopened = new VaultStore();
+    await expect(reopened.loadFromBytesWithRawKey(bytes, wrongBits)).rejects.toThrow(/wrong password|corrupted/i);
+  });
+
+  it("does not change loadFromBytes's own behavior (still works by password)", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("pw-unaffected", 1000);
+    store.addItem({ type: "note", title: "still works", tags: [], fields: [] });
+    const bytes = await store.toBytes();
+
+    const reopened = new VaultStore();
+    await reopened.loadFromBytes(bytes, "pw-unaffected");
+
+    expect(reopened.search("")).toMatchObject([{ title: "still works" }]);
   });
 });
 

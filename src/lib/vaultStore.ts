@@ -348,7 +348,51 @@ export class VaultStore {
     const key = await deriveKey(password, salt, header.kdf.params.iterations);
     const iv = base64ToBytes(header.iv);
     const plaintext = await decrypt(key, iv, ciphertext); // кидает DecryptError
+    this.applyDecryptedVault(header, key, plaintext);
+  }
 
+  /**
+   * Открыть базу по СЫРОМУ ключу шифрования (не по паролю) - используется
+   * разблокировкой по PIN (тикет PIN-кода): `unwrapVaultKeyWithPin` из
+   * `pinLock.ts` возвращает те же 256 бит, что и реальный ключ базы,
+   * восстановленные PIN-обёрткой. Импортирует `rawKeyBits` как
+   * non-extractable AES-256-GCM `CryptoKey` (тот же принцип R34, что у
+   * `deriveKey` в `crypto.ts` - извлекаемость не нужна и здесь), дальше идёт
+   * тем же путём, что и `loadFromBytes`: разбор контейнера, расшифровка
+   * (переиспользует `decrypt` из `crypto.ts` - если ключ не подходит, тот же
+   * `DecryptError`, что и при неверном мастер-пароле; вызывающий код
+   * (`LockScreen.tsx`) ловит его как "хранилище повреждено или ключ из PIN
+   * устарел" - неразличимые на этом уровне случаи, тот же принцип R94.1),
+   * общий с `loadFromBytes` хвост - `applyDecryptedVault` ниже.
+   *
+   * Не трогает и не меняет поведение `loadFromBytes` - оба метода независимо
+   * ведут к одному и тому же общему хвосту, различаясь только тем, откуда
+   * берётся `key` (деривация из пароля vs импорт сырых байт).
+   */
+  async loadFromBytesWithRawKey(fileBytes: Uint8Array, rawKeyBits: Uint8Array): Promise<void> {
+    const { header, ciphertext } = parseContainer(fileBytes);
+    const key = await crypto.subtle.importKey(
+      "raw",
+      rawKeyBits as BufferSource,
+      { name: "AES-GCM", length: 256 },
+      // extractable: false - см. комментарий модуля crypto.ts и R34.
+      false,
+      ["encrypt", "decrypt"],
+    );
+    const iv = base64ToBytes(header.iv);
+    const plaintext = await decrypt(key, iv, ciphertext); // кидает DecryptError
+    this.applyDecryptedVault(header, key, plaintext);
+  }
+
+  /**
+   * Общий хвост `loadFromBytes`/`loadFromBytesWithRawKey`: разобрать
+   * расшифрованное тело как JSON-массив записей и применить полученные
+   * `key`/`kdfInfo` к стору. Оба метода отличаются только тем, ОТКУДА берётся
+   * уже готовый `key` (деривация из пароля vs импорт сырых байт от
+   * PIN-обёртки) - вся дальнейшая логика идентична, вынесена сюда, чтобы не
+   * дублироваться между ними.
+   */
+  private applyDecryptedVault(header: VaultHeader, key: CryptoKey, plaintext: Uint8Array): void {
     let text: string;
     try {
       text = new TextDecoder("utf-8", { fatal: true }).decode(plaintext);

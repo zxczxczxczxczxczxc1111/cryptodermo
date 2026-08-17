@@ -79,6 +79,76 @@ describe("readSettings: чтение существующего файла", () 
   });
 });
 
+describe("readSettings: поля фичи PIN (pin/pinLockout/pinSetupOffered)", () => {
+  it("returns pin/pinLockout/pinSetupOffered when present and well-formed", async () => {
+    readVaultMock.mockResolvedValue(
+      new TextEncoder().encode(
+        JSON.stringify({
+          autoLockTimeoutMs: 300_000,
+          lastVaultPath: null,
+          pin: { salt: "c2FsdA==", iterations: 600_000, iv: "aXY=", wrappedKey: "d2s=" },
+          pinLockout: { failedAttempts: 1, lockedUntil: null },
+          pinSetupOffered: true,
+        }),
+      ),
+    );
+
+    const settings = await readSettings("D:/vault/vault.dat");
+
+    expect(settings.pin).toEqual({ salt: "c2FsdA==", iterations: 600_000, iv: "aXY=", wrappedKey: "d2s=" });
+    expect(settings.pinLockout).toEqual({ failedAttempts: 1, lockedUntil: null });
+    expect(settings.pinSetupOffered).toBe(true);
+  });
+
+  it("leaves pin/pinLockout/pinSetupOffered undefined when the file predates the PIN feature", async () => {
+    readVaultMock.mockResolvedValue(
+      new TextEncoder().encode(JSON.stringify({ autoLockTimeoutMs: 300_000, lastVaultPath: null })),
+    );
+
+    const settings = await readSettings("D:/vault/vault.dat");
+
+    expect(settings.pin).toBeUndefined();
+    expect(settings.pinLockout).toBeUndefined();
+    expect(settings.pinSetupOffered).toBeUndefined();
+  });
+
+  it("treats a malformed pin object as not-configured without failing the whole read", async () => {
+    readVaultMock.mockResolvedValue(
+      new TextEncoder().encode(
+        JSON.stringify({ autoLockTimeoutMs: 300_000, lastVaultPath: null, pin: { salt: "only-salt" } }),
+      ),
+    );
+
+    const settings = await readSettings("D:/vault/vault.dat");
+
+    expect(settings.pin).toBeUndefined();
+    expect(settings.autoLockTimeoutMs).toBe(300_000);
+  });
+});
+
+describe("updateSettings: clearing pin/pinLockout (PIN disable / master password change)", () => {
+  it("omits pin/pinLockout from the written JSON when patched with undefined", async () => {
+    readVaultMock.mockResolvedValue(
+      new TextEncoder().encode(
+        JSON.stringify({
+          autoLockTimeoutMs: 300_000,
+          lastVaultPath: null,
+          pin: { salt: "c2FsdA==", iterations: 600_000, iv: "aXY=", wrappedKey: "d2s=" },
+          pinLockout: { failedAttempts: 3, lockedUntil: "2026-08-16T12:10:00.000Z" },
+        }),
+      ),
+    );
+
+    await updateSettings("D:/vault/vault.dat", { pin: undefined, pinLockout: undefined });
+
+    const [, bytes] = writeVaultAtomicMock.mock.calls[0];
+    const written = JSON.parse(new TextDecoder().decode(bytes));
+    expect(written).not.toHaveProperty("pin");
+    expect(written).not.toHaveProperty("pinLockout");
+    expect(written.autoLockTimeoutMs).toBe(300_000);
+  });
+});
+
 describe("writeSettings / updateSettings", () => {
   it("writeSettings writes the given object atomically to <vault dir>/vault.settings.json", async () => {
     await writeSettings("D:/vault/vault.dat", { autoLockTimeoutMs: 120_000, lastVaultPath: null });

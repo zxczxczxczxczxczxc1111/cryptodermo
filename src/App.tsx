@@ -664,7 +664,7 @@ function App() {
         sidebarSections={sidebarSections}
         activeSidebarItemId={sidebarIdForScreen(screen)}
         onSidebarItemSelect={(id) => void navigateTo(screenForSidebarId(id))}
-        recentListProps={{ items: recentItems }}
+        recentListProps={{ items: recentItems, onSelect: (id) => void navigateTo({ kind: "editor", itemId: id }) }}
         statusBarProps={{
           itemsCount: allItems.length,
           lastBackupAt,

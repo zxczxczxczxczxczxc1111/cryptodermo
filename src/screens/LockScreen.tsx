@@ -28,10 +28,37 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { VaultStore } from "../lib/vaultStore";
 import { DecryptError } from "../lib/crypto";
-import { FormatError } from "../lib/vaultFormat";
+import { parseContainer, FormatError } from "../lib/vaultFormat";
 import { readVault, type BackupInfo } from "../lib/tauriApi";
+import { readSettings, updateSettings } from "../lib/settingsConfig";
+import {
+  isValidPinFormat,
+  setUpPin,
+  unwrapVaultKeyWithPin,
+  isPinLockedOut,
+  recordFailedPinAttempt,
+  resetPinLockout,
+  PinUnlockError,
+  PIN_MAX_LENGTH,
+  type PinWrap,
+  type PinLockoutState,
+} from "../lib/pinLock";
 import "../tokens.css";
 import "./LockScreen.css";
+
+/** base64 (стандартный алфавит) -> байты - своя маленькая копия, как уже
+ * принято в проекте (`vaultStore.ts`/`vaultFormat.ts`/`pinLock.ts` и т.д. -
+ * приватные хелперы других модулей не экспортируются). Нужна здесь только
+ * для того, чтобы декодировать `header.kdf.salt` перед вызовом
+ * `pinLock.setUpPin` (см. `submitPinSetup` ниже). */
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
 
 /** Единый текст ошибки на неверный пароль/битый файл - AES-GCM не различает
  * эти два случая криптографически (R94.1), дословно из брифа/ticket. */
@@ -180,6 +207,118 @@ export async function submitRecovery(params: {
   }
   params.onUnlock(store, params.vaultPath);
   return { ok: true };
+}
+
+/* -------------------------------------------------------------------------
+ * Разблокировка по PIN (фича PIN-кода, см. задание/`pinLock.ts`). Тот же
+ * приём разделения, что и выше для submitUnlock/submitCreate/submitRecovery:
+ * вся значимая логика - обычные экспортированные async-функции без JSX/
+ * хуков, проверенные напрямую (LockScreen.test.ts); оркестрация состояния
+ * формы (какая фаза сейчас показана, куда переключиться после успеха) -
+ * внутри самого компонента ниже, проверена чтением и сборкой, как и
+ * остальной JSX этого файла.
+ * ---------------------------------------------------------------------- */
+
+/** Единый текст ошибки на неверный PIN - тот же принцип R94.1, что и
+ * `UNLOCK_ERROR_MESSAGE`: неверный PIN и повреждённая/устаревшая PIN-обёртка
+ * (например, PIN не сбросили после смены мастер-пароля) неразличимы на
+ * крипто-уровне, поэтому и здесь один текст, без подсказок про длину или
+ * формат PIN. */
+export const PIN_UNLOCK_ERROR_MESSAGE =
+  "Не удалось войти по PIN. Попробуйте ещё раз или используйте мастер-пароль";
+
+/** Текст ошибки формата/несовпадения PIN при НАСТРОЙКЕ (не при входе) -
+ * здесь, в отличие от `PIN_UNLOCK_ERROR_MESSAGE`, подсказать формат не
+ * проблема: требования к формату и так публичны (видны по `maxLength` поля
+ * ввода), это не утечка информации о самом PIN. */
+export const PIN_FORMAT_ERROR_MESSAGE = "PIN должен состоять только из цифр (4-8 символов)";
+export const PIN_SETUP_MISMATCH_MESSAGE = "PIN и повтор не совпадают";
+
+/**
+ * Попытка разблокировать существующую базу PIN-ом (envelope-ключ, см.
+ * `pinLock.ts`). Аналог `submitUnlock` выше, но без мастер-пароля - `pinWrap`
+ * уже должен быть прочитан вызывающим кодом из `vault.settings.json`.
+ * `PinUnlockError` (неверный PIN) и `DecryptError`/`FormatError` от
+ * `VaultStore.loadFromBytesWithRawKey` (ключ из PIN устарел или файл
+ * повреждён) сводятся к одному и тому же тексту (R94.1) - причину эти два
+ * случая на этом уровне не различают.
+ */
+export async function submitPinUnlock(params: {
+  existingBytes: Uint8Array;
+  pinWrap: PinWrap;
+  pin: string;
+  vaultPath: string;
+  onUnlock: (store: VaultStore, vaultPath: string) => void;
+}): Promise<SubmitResult> {
+  let raw: Uint8Array;
+  try {
+    raw = await unwrapVaultKeyWithPin(params.pinWrap, params.pin);
+  } catch (err) {
+    if (err instanceof PinUnlockError) {
+      return { ok: false, message: PIN_UNLOCK_ERROR_MESSAGE };
+    }
+    throw err;
+  }
+
+  const store = new VaultStore();
+  try {
+    await store.loadFromBytesWithRawKey(params.existingBytes, raw);
+  } catch (err) {
+    if (err instanceof DecryptError || err instanceof FormatError) {
+      return { ok: false, message: PIN_UNLOCK_ERROR_MESSAGE };
+    }
+    throw err;
+  }
+  params.onUnlock(store, params.vaultPath);
+  return { ok: true };
+}
+
+export type PinSetupResult = { ok: true; wrap: PinWrap } | { ok: false; message: string };
+
+/**
+ * Настроить PIN сразу после успешного создания новой базы или успешной
+ * разблокировки существующей мастер-паролем (R "предложение настроить PIN"
+ * в задании). `fileBytes` - байты только что прочитанного/созданного файла
+ * (вызывающий компонент уже держит их в памяти в этот момент - см.
+ * `LockScreen` ниже, `checkExistingVault`/`existingBytes`), из них берётся
+ * `header.kdf` (соль и итерации мастер-пароля ЭТОЙ базы) без обращения к
+ * `VaultStore` за ними. `vaultPassword` - пароль, который пользователь
+ * только что ввёл в форму (создания или разблокировки) и который ещё в
+ * памяти на момент вызова.
+ */
+export async function submitPinSetup(params: {
+  fileBytes: Uint8Array;
+  vaultPassword: string;
+  pin: string;
+  pinConfirm: string;
+}): Promise<PinSetupResult> {
+  if (!isValidPinFormat(params.pin)) {
+    return { ok: false, message: PIN_FORMAT_ERROR_MESSAGE };
+  }
+  if (params.pin !== params.pinConfirm) {
+    return { ok: false, message: PIN_SETUP_MISMATCH_MESSAGE };
+  }
+  const { header } = parseContainer(params.fileBytes);
+  const salt = base64ToBytes(header.kdf.salt);
+  const wrap = await setUpPin(params.vaultPassword, salt, header.kdf.params.iterations, params.pin);
+  return { ok: true, wrap };
+}
+
+/** Оставшееся время блокировки в мс - 0, если блокировки нет или она уже
+ * истекла. `now` - параметр, не `Date.now()` внутри, тот же принцип
+ * тестируемости, что и у `isPinLockedOut` в `pinLock.ts`. */
+export function pinLockoutRemainingMs(state: PinLockoutState | undefined, now: Date): number {
+  if (!state?.lockedUntil) return 0;
+  return Math.max(0, new Date(state.lockedUntil).getTime() - now.getTime());
+}
+
+/** Текст сообщения о блокировке (задание: "Слишком много попыток. Попробуйте
+ * через N мин."). Округление вверх до целой минуты (не вниз) - "меньше 1
+ * минуты осталось" не должно показывать "через 0 мин", это читалось бы как
+ * "уже можно", хотя форма ещё недоступна. */
+export function formatPinLockoutMessage(remainingMs: number): string {
+  const minutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+  return `Слишком много попыток. Попробуйте через ${minutes} мин.`;
 }
 
 /* -------------------------------------------------------------------------
@@ -599,7 +738,28 @@ export interface LockScreenProps {
   onPickAlternatePath?: () => Promise<string | null>;
 }
 
-type Phase = "checking" | "unlock" | "create" | "conflict";
+type Phase =
+  | "checking"
+  | "unlock"
+  | "create"
+  | "conflict"
+  | "pinEntry"
+  | "pinSetupOffer"
+  | "pinSetupForm"
+  | "lockedOut";
+
+/** Данные, которые нужно провести через фазу "предложить настроить PIN" -
+ * стор и путь уже разблокированы, но реальный `onUnlock` из пропсов ещё не
+ * вызван (задание: предложение показывается "до вызова onUnlock"). Пароль и
+ * байты файла нужны только если пользователь согласится настроить PIN
+ * (`submitPinSetup`) - если он откажется ("Позже"), они просто отбрасываются
+ * вместе с этим объектом. */
+type PendingPinSetupOffer = {
+  store: VaultStore;
+  vaultPath: string;
+  fileBytes: Uint8Array;
+  password: string;
+};
 
 export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScreenProps) {
   const [activePath, setActivePath] = useState(vaultPath);
@@ -614,6 +774,20 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
   const [error, setError] = useState<string | null>(null);
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [altPathInput, setAltPathInput] = useState(vaultPath);
+
+  // --- PIN (фича PIN-кода) -------------------------------------------------
+  // Состояние PIN из vault.settings.json для ТЕКУЩЕГО activePath, прочитанное
+  // на месте (readSettings) - тот же паттерн, что useAutoLock.ts применяет к
+  // чтению своего единственного поля (см. комментарий модуля, "каждый экран/
+  // хук читает настройки независимо"), не пробрасывается пропом из App.tsx.
+  const [pinWrap, setPinWrap] = useState<PinWrap | null>(null);
+  const [pinLockoutState, setPinLockoutState] = useState<PinLockoutState | undefined>(undefined);
+  const [pinSetupOffered, setPinSetupOffered] = useState(false);
+  const [pinValue, setPinValue] = useState("");
+  const [pinSetupValue, setPinSetupValue] = useState("");
+  const [pinSetupConfirm, setPinSetupConfirm] = useState("");
+  const [lockoutRemainingMs, setLockoutRemainingMs] = useState(0);
+  const pendingPinOfferRef = useRef<PendingPinSetupOffer | null>(null);
 
   // --- Сеть на фоне (тикет 13, §16) ---------------------------------------
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -648,6 +822,153 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
   function reportError(message: string) {
     setError(message);
     animPhaseRef.current = { kind: "disrupt", startedAtMs: performance.now() };
+  }
+
+  /**
+   * "Успешный вход любым способом снимает блокировку" (задание) - вызывается
+   * после ЛЮБОГО успешного входа в существующую базу (мастер-паролем или
+   * PIN-ом, см. `proceedAfterUnlock`/`handleRecoverClick` ниже). Пишет в
+   * `vault.settings.json` только когда реально есть что сбрасывать
+   * (неудачные попытки или активная блокировка) - не заводит файл лишней
+   * записью на КАЖДЫЙ успешный вход, если счётчик и так уже нулевой.
+   * Fire-and-forget: неудача записи здесь не должна блокировать сам вход
+   * (пользователь уже расшифровал базу успешно), только логируется.
+   */
+  function resetPinLockoutIfNeeded() {
+    if (pinLockoutState && (pinLockoutState.failedAttempts > 0 || pinLockoutState.lockedUntil)) {
+      const reset = resetPinLockout();
+      setPinLockoutState(reset);
+      updateSettings(activePath, { pinLockout: reset }).catch((err) => {
+        console.error("LockScreen: failed to persist pinLockout reset after a successful unlock", err);
+      });
+    }
+  }
+
+  /**
+   * Общая точка после успешного входа в СУЩЕСТВУЮЩУЮ базу мастер-паролем или
+   * PIN-ом (не для создания новой базы - см. отдельную ветку в
+   * `handleCreateSubmit`): сбрасывает блокировку PIN, и, только для входа
+   * мастер-паролем на базе без настроенного PIN (`offerPin` передан и PIN
+   * ещё не настроен, и предложение ещё не показывалось), переключает экран
+   * на предложение настроить PIN ВМЕСТО немедленного `onUnlock` (задание:
+   * предложение - "до вызова onUnlock"). Иначе - обычный переход с разлётом
+   * сети (`unlockAfterDisperse`), как и раньше.
+   */
+  function proceedAfterUnlock(params: {
+    store: VaultStore;
+    unlockedPath: string;
+    offerPin: { fileBytes: Uint8Array; password: string } | null;
+  }) {
+    resetPinLockoutIfNeeded();
+    if (params.offerPin && !pinWrap && !pinSetupOffered) {
+      pendingPinOfferRef.current = {
+        store: params.store,
+        vaultPath: params.unlockedPath,
+        fileBytes: params.offerPin.fileBytes,
+        password: params.offerPin.password,
+      };
+      setPinSetupValue("");
+      setPinSetupConfirm("");
+      setError(null);
+      setPhase("pinSetupOffer");
+      return;
+    }
+    unlockAfterDisperse(params.store, params.unlockedPath);
+  }
+
+  /** "Позже"/"Пропустить" на предложении настроить PIN (или на самой форме
+   * настройки) - помечает предложение показанным (не спамить им повторно,
+   * задание) и продолжает вход тем же путём, что и обычный успех. */
+  function handleSkipPinSetup() {
+    const pending = pendingPinOfferRef.current;
+    if (!pending) return;
+    pendingPinOfferRef.current = null;
+    setPinSetupOffered(true);
+    updateSettings(pending.vaultPath, { pinSetupOffered: true }).catch((err) => {
+      console.error("LockScreen: failed to persist pinSetupOffered after skipping PIN setup", err);
+    });
+    unlockAfterDisperse(pending.store, pending.vaultPath);
+  }
+
+  /** Подтверждение формы настройки PIN (два поля - PIN и повтор, задание) -
+   * `submitPinSetup` делает валидацию формата/совпадения и саму крипто-часть
+   * (`pinLock.setUpPin`); эта функция только сохраняет результат в
+   * `vault.settings.json` и продолжает прерванный вход. */
+  async function handlePinSetupSubmit(e: FormEvent) {
+    e.preventDefault();
+    const pending = pendingPinOfferRef.current;
+    if (busy || !pending) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await submitPinSetup({
+        fileBytes: pending.fileBytes,
+        vaultPassword: pending.password,
+        pin: pinSetupValue,
+        pinConfirm: pinSetupConfirm,
+      });
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      pendingPinOfferRef.current = null;
+      setPinWrap(result.wrap);
+      setPinSetupOffered(true);
+      await updateSettings(pending.vaultPath, { pin: result.wrap, pinSetupOffered: true });
+      unlockAfterDisperse(pending.store, pending.vaultPath);
+    } catch (err) {
+      console.error("LockScreen: unexpected error while setting up a PIN", err);
+      setError(UNEXPECTED_ERROR_MESSAGE);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Подтверждение формы ввода PIN (фаза "pinEntry", показывается по
+   * умолчанию, когда PIN уже настроен и блокировки сейчас нет). Неверный PIN
+   * фиксируется через `recordFailedPinAttempt` и немедленно сохраняется в
+   * `vault.settings.json` (переживает перезапуск приложения, задание) - если
+   * это довело до блокировки, форма ввода PIN/пароля скрывается целиком
+   * (фаза "lockedOut"), иначе - обычный единый текст ошибки, без подсказок
+   * про формат PIN (R94.1, см. `PIN_UNLOCK_ERROR_MESSAGE`).
+   */
+  async function handlePinUnlockSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (busy || existingBytes === null || !pinWrap) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await submitPinUnlock({
+        existingBytes,
+        pinWrap,
+        pin: pinValue,
+        vaultPath: activePath,
+        onUnlock: (unlockedStore, unlockedPath) => {
+          proceedAfterUnlock({ store: unlockedStore, unlockedPath, offerPin: null });
+        },
+      });
+      if (!result.ok) {
+        const now = new Date();
+        const nextLockout = recordFailedPinAttempt(pinLockoutState, now);
+        setPinLockoutState(nextLockout);
+        setPinValue("");
+        updateSettings(activePath, { pinLockout: nextLockout }).catch((err) => {
+          console.error("LockScreen: failed to persist pinLockout after a failed PIN attempt", err);
+        });
+        if (isPinLockedOut(nextLockout, now)) {
+          setLockoutRemainingMs(pinLockoutRemainingMs(nextLockout, now));
+          setPhase("lockedOut");
+        } else {
+          reportError(result.message);
+        }
+      }
+    } catch (err) {
+      console.error("LockScreen: unexpected error while unlocking by PIN", err);
+      reportError(UNEXPECTED_ERROR_MESSAGE);
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -792,11 +1113,22 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
     setPhase("checking");
     setError(null);
     setBackups([]);
-    checkExistingVault(activePath).then((bytes) => {
+    setPinValue("");
+    pendingPinOfferRef.current = null;
+    Promise.all([checkExistingVault(activePath), readSettings(activePath)]).then(([bytes, settings]) => {
       if (cancelled) return;
+      setPinWrap(settings.pin ?? null);
+      setPinLockoutState(settings.pinLockout);
+      setPinSetupOffered(settings.pinSetupOffered === true);
       if (bytes !== null) {
         setExistingBytes(bytes);
-        setPhase("unlock");
+        if (isPinLockedOut(settings.pinLockout, new Date())) {
+          setPhase("lockedOut");
+        } else if (settings.pin) {
+          setPhase("pinEntry");
+        } else {
+          setPhase("unlock");
+        }
       } else {
         setExistingBytes(null);
         setPhase("create");
@@ -806,6 +1138,25 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
       cancelled = true;
     };
   }, [activePath]);
+
+  // Обратный отсчёт блокировки (задание: "автоматическая разблокировка формы
+  // по истечении времени БЕЗ перезапуска приложения") - пересчитывается раз в
+  // секунду, тот же тик, что и TICK_MS в useAutoLock.ts. Как только время
+  // истекло, форма снова становится доступной сама (переключение фазы), без
+  // участия пользователя.
+  useEffect(() => {
+    if (phase !== "lockedOut") return;
+    const tick = () => {
+      const remaining = pinLockoutRemainingMs(pinLockoutState, new Date());
+      setLockoutRemainingMs(remaining);
+      if (remaining <= 0) {
+        setPhase(pinWrap ? "pinEntry" : "unlock");
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [phase, pinLockoutState, pinWrap]);
 
   async function handleUnlockSubmit(e: FormEvent) {
     e.preventDefault();
@@ -817,7 +1168,13 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
         existingBytes,
         password,
         vaultPath: activePath,
-        onUnlock: unlockAfterDisperse,
+        onUnlock: (unlockedStore, unlockedPath) => {
+          proceedAfterUnlock({
+            store: unlockedStore,
+            unlockedPath,
+            offerPin: { fileBytes: existingBytes, password },
+          });
+        },
       });
       if (!result.ok) {
         reportError(result.message);
@@ -832,6 +1189,15 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
     }
   }
 
+  /** Переключение с формы ввода PIN на форму мастер-пароля (задание: "ссылка/
+   * кнопка «Войти по мастер-паролю»") - та же фаза "unlock", что показывается
+   * и когда PIN вовсе не настроен, отличий в обработке нет. */
+  function handleSwitchToMasterPassword() {
+    setError(null);
+    setPassword("");
+    setPhase("unlock");
+  }
+
   async function handleRecoverClick() {
     if (busy || backups.length === 0) return;
     setBusy(true);
@@ -841,7 +1207,10 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
         backupPath: backups[0].path,
         password,
         vaultPath: activePath,
-        onUnlock: unlockAfterDisperse,
+        onUnlock: (unlockedStore, unlockedPath) => {
+          resetPinLockoutIfNeeded();
+          unlockAfterDisperse(unlockedStore, unlockedPath);
+        },
       });
       if (!result.ok) {
         reportError(result.message);
@@ -868,11 +1237,36 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
         setPhase("conflict");
         return;
       }
+      const createdPassword = password;
       const result = await submitCreate({
         vaultPath: activePath,
         password,
         passwordConfirm,
-        onUnlock: unlockAfterDisperse,
+        onUnlock: (unlockedStore, unlockedPath) => {
+          void (async () => {
+            // Предложение настроить PIN сразу после создания базы (задание:
+            // "до вызова onUnlock") - только один раз на этот путь; байты
+            // только что созданного файла перечитываются с диска (store.save()
+            // внутри submitCreate уже записал их) - тот же принцип, что и
+            // "существующих" bytes для разблокировки: не просить их у
+            // VaultStore, они и так только что были на диске.
+            const createdBytes = pinSetupOffered ? null : await checkExistingVault(unlockedPath);
+            if (createdBytes) {
+              pendingPinOfferRef.current = {
+                store: unlockedStore,
+                vaultPath: unlockedPath,
+                fileBytes: createdBytes,
+                password: createdPassword,
+              };
+              setPinSetupValue("");
+              setPinSetupConfirm("");
+              setError(null);
+              setPhase("pinSetupOffer");
+              return;
+            }
+            unlockAfterDisperse(unlockedStore, unlockedPath);
+          })();
+        },
       });
       if (!result.ok) {
         reportError(result.message);
@@ -921,6 +1315,119 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
           <p className="lock-screen__status" role="status">
             {DERIVING_LABEL}
           </p>
+        )}
+
+        {phase === "pinEntry" && (
+          <form className="lock-screen__form" onSubmit={handlePinUnlockSubmit}>
+            <label className="lock-screen__label" htmlFor="lock-screen-pin">
+              PIN-код
+            </label>
+            <input
+              id="lock-screen-pin"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={PIN_MAX_LENGTH}
+              className="lock-screen__input lock-screen__input--pin"
+              value={pinValue}
+              onChange={(e) => setPinValue(e.currentTarget.value.replace(/\D/g, ""))}
+              autoFocus
+              disabled={busy}
+            />
+            <button type="submit" className="lock-screen__submit" disabled={busy || pinValue.length === 0}>
+              {busy ? DERIVING_LABEL : "Открыть"}
+            </button>
+            <button
+              type="button"
+              className="lock-screen__recover"
+              onClick={handleSwitchToMasterPassword}
+              disabled={busy}
+            >
+              Войти по мастер-паролю
+            </button>
+            {error && (
+              <p className="lock-screen__error" role="alert">
+                {error}
+              </p>
+            )}
+          </form>
+        )}
+
+        {phase === "lockedOut" && (
+          <p className="lock-screen__error" role="alert">
+            {formatPinLockoutMessage(lockoutRemainingMs)}
+          </p>
+        )}
+
+        {phase === "pinSetupOffer" && (
+          <div className="lock-screen__conflict">
+            <p>Настроить вход по PIN-коду для следующих открытий базы?</p>
+            <div className="lock-screen__conflict-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setPinSetupValue("");
+                  setPinSetupConfirm("");
+                  setError(null);
+                  setPhase("pinSetupForm");
+                }}
+              >
+                Настроить
+              </button>
+              <button type="button" onClick={handleSkipPinSetup}>
+                Позже
+              </button>
+            </div>
+          </div>
+        )}
+
+        {phase === "pinSetupForm" && (
+          <form className="lock-screen__form" onSubmit={handlePinSetupSubmit}>
+            <label className="lock-screen__label" htmlFor="lock-screen-pin-setup">
+              Новый PIN-код
+            </label>
+            <input
+              id="lock-screen-pin-setup"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={PIN_MAX_LENGTH}
+              className="lock-screen__input lock-screen__input--pin"
+              value={pinSetupValue}
+              onChange={(e) => setPinSetupValue(e.currentTarget.value.replace(/\D/g, ""))}
+              autoFocus
+              disabled={busy}
+            />
+            <label className="lock-screen__label" htmlFor="lock-screen-pin-setup-confirm">
+              Повторите PIN-код
+            </label>
+            <input
+              id="lock-screen-pin-setup-confirm"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={PIN_MAX_LENGTH}
+              className="lock-screen__input lock-screen__input--pin"
+              value={pinSetupConfirm}
+              onChange={(e) => setPinSetupConfirm(e.currentTarget.value.replace(/\D/g, ""))}
+              disabled={busy}
+            />
+            <button
+              type="submit"
+              className="lock-screen__submit"
+              disabled={busy || pinSetupValue.length === 0 || pinSetupConfirm.length === 0}
+            >
+              {busy ? DERIVING_LABEL : "Сохранить PIN"}
+            </button>
+            <button type="button" className="lock-screen__recover" onClick={handleSkipPinSetup} disabled={busy}>
+              Пропустить
+            </button>
+            {error && (
+              <p className="lock-screen__error" role="alert">
+                {error}
+              </p>
+            )}
+          </form>
         )}
 
         {phase === "unlock" && (

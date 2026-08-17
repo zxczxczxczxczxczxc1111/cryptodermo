@@ -18,8 +18,13 @@ import { readVault, writeVaultAtomic, listBackups, rotateBackups } from "../lib/
 import { VaultStore } from "../lib/vaultStore";
 import {
   changeMasterPassword,
+  enableOrChangePin,
+  disablePin,
   CURRENT_PASSWORD_VERIFY_ERROR_MESSAGE,
   PASSWORD_CHANGE_SAVE_ERROR_MESSAGE,
+  PIN_TOGGLE_PASSWORD_ERROR_MESSAGE,
+  PIN_TOGGLE_MISMATCH_MESSAGE,
+  PIN_TOGGLE_FORMAT_ERROR_MESSAGE,
 } from "./Settings";
 
 const readVaultMock = vi.mocked(readVault);
@@ -184,5 +189,143 @@ describe("changeMasterPassword: симулированное прерывани�
     // Переданный извне живой store не тронут - его собственные данные и
     // пароль по-прежнему рабочие (можно попробовать ещё раз).
     expect(store.search("")).toMatchObject([{ title: "GitHub" }]);
+  });
+});
+
+describe("changeMasterPassword: инвалидация PIN после смены пароля (фича PIN-кода)", () => {
+  it("clears an existing PIN wrap and lockout in vault.settings.json after a successful password change", async () => {
+    const { store, diskBytes } = await openVaultOnDisk("old password");
+    const settingsBytes = new TextEncoder().encode(
+      JSON.stringify({
+        autoLockTimeoutMs: 300_000,
+        lastVaultPath: null,
+        pin: { salt: "c2FsdA==", iterations: 600_000, iv: "aXY=", wrappedKey: "d2s=" },
+        pinLockout: { failedAttempts: 2, lockedUntil: null },
+      }),
+    );
+    readVaultMock.mockImplementation(async (path: string) =>
+      path === "D:/vault/vault.settings.json" ? settingsBytes : diskBytes,
+    );
+
+    const result = await changeMasterPassword({
+      store,
+      vaultPath: "D:/vault/vault.dat",
+      currentPassword: "old password",
+      newPassword: "new password",
+    });
+
+    expect(result.ok).toBe(true);
+
+    const settingsWrite = writeVaultAtomicMock.mock.calls.find(([path]) => path === "D:/vault/vault.settings.json");
+    expect(settingsWrite).toBeDefined();
+    const written = JSON.parse(new TextDecoder().decode(settingsWrite![1]));
+    expect(written).not.toHaveProperty("pin");
+    expect(written).not.toHaveProperty("pinLockout");
+    // Остальные поля настроек не задеты этим сбросом.
+    expect(written.autoLockTimeoutMs).toBe(300_000);
+  });
+
+  it("does not touch vault.settings.json when the password change itself fails", async () => {
+    const { store, diskBytes } = await openVaultOnDisk("right password");
+    readVaultMock.mockResolvedValue(diskBytes);
+
+    const result = await changeMasterPassword({
+      store,
+      vaultPath: "D:/vault/vault.dat",
+      currentPassword: "wrong password",
+      newPassword: "new password",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(writeVaultAtomicMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("enableOrChangePin", () => {
+  it("rejects a malformed PIN without touching the disk at all", async () => {
+    const result = await enableOrChangePin({
+      vaultPath: "D:/vault/vault.dat",
+      masterPassword: "pw",
+      pin: "12",
+      pinConfirm: "12",
+    });
+
+    expect(result).toEqual({ ok: false, message: PIN_TOGGLE_FORMAT_ERROR_MESSAGE });
+    expect(readVaultMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a PIN / confirm mismatch without touching the disk at all", async () => {
+    const result = await enableOrChangePin({
+      vaultPath: "D:/vault/vault.dat",
+      masterPassword: "pw",
+      pin: "1234",
+      pinConfirm: "4321",
+    });
+
+    expect(result).toEqual({ ok: false, message: PIN_TOGGLE_MISMATCH_MESSAGE });
+    expect(readVaultMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a wrong master password and writes nothing", async () => {
+    const { diskBytes } = await openVaultOnDisk("right password");
+    readVaultMock.mockResolvedValue(diskBytes);
+
+    const result = await enableOrChangePin({
+      vaultPath: "D:/vault/vault.dat",
+      masterPassword: "wrong password",
+      pin: "1234",
+      pinConfirm: "1234",
+    });
+
+    expect(result).toEqual({ ok: false, message: PIN_TOGGLE_PASSWORD_ERROR_MESSAGE });
+    expect(writeVaultAtomicMock).not.toHaveBeenCalled();
+  });
+
+  it("on success, writes a PinWrap and a zeroed pinLockout to vault.settings.json", async () => {
+    const { diskBytes } = await openVaultOnDisk("correct password");
+    readVaultMock.mockResolvedValue(diskBytes);
+
+    const result = await enableOrChangePin({
+      vaultPath: "D:/vault/vault.dat",
+      masterPassword: "correct password",
+      pin: "1234",
+      pinConfirm: "1234",
+    });
+
+    expect(result).toEqual({ ok: true });
+    const settingsWrite = writeVaultAtomicMock.mock.calls.find(([path]) => path === "D:/vault/vault.settings.json");
+    expect(settingsWrite).toBeDefined();
+    const written = JSON.parse(new TextDecoder().decode(settingsWrite![1]));
+    expect(typeof written.pin.salt).toBe("string");
+    expect(typeof written.pin.iv).toBe("string");
+    expect(typeof written.pin.wrappedKey).toBe("string");
+    expect(written.pin.iterations).toBeGreaterThanOrEqual(600_000);
+    expect(written.pinLockout).toEqual({ failedAttempts: 0, lockedUntil: null });
+  });
+});
+
+describe("disablePin", () => {
+  it("rejects a wrong master password and writes nothing", async () => {
+    const { diskBytes } = await openVaultOnDisk("right password");
+    readVaultMock.mockResolvedValue(diskBytes);
+
+    const result = await disablePin({ vaultPath: "D:/vault/vault.dat", masterPassword: "wrong password" });
+
+    expect(result).toEqual({ ok: false, message: PIN_TOGGLE_PASSWORD_ERROR_MESSAGE });
+    expect(writeVaultAtomicMock).not.toHaveBeenCalled();
+  });
+
+  it("on success, clears pin/pinLockout in vault.settings.json", async () => {
+    const { diskBytes } = await openVaultOnDisk("correct password");
+    readVaultMock.mockResolvedValue(diskBytes);
+
+    const result = await disablePin({ vaultPath: "D:/vault/vault.dat", masterPassword: "correct password" });
+
+    expect(result).toEqual({ ok: true });
+    const settingsWrite = writeVaultAtomicMock.mock.calls.find(([path]) => path === "D:/vault/vault.settings.json");
+    expect(settingsWrite).toBeDefined();
+    const written = JSON.parse(new TextDecoder().decode(settingsWrite![1]));
+    expect(written).not.toHaveProperty("pin");
+    expect(written).not.toHaveProperty("pinLockout");
   });
 });

@@ -19,6 +19,16 @@ export interface RecentListItem {
 
 export interface RecentListProps {
   items?: RecentListItem[];
+  /**
+   * Открыть эту запись в редакторе - вызывается по клику на строку (кнопка
+   * `<button>` внутри `<li>`, тот же паттерн интерактивной строки, что и
+   * `.list__row` в `List.tsx`: реальный `<button>`, Enter/Space работают
+   * нативно, без ручного `onKeyDown`). Необязательный - без него строки
+   * остаются некликабельными (обычная разметка без `<button>`), тот же
+   * принцип опциональности, что и у `List.onCreateNew`: компонент остаётся
+   * рабочим и без этого колбэка.
+   */
+  onSelect?: (id: string) => void;
 }
 
 // Моковые данные тикета 03 - нарочно больше, чем помещается на экране без
@@ -42,26 +52,43 @@ const MOCK_ITEMS: RecentListItem[] = [
   { id: "16", title: "Кодовое слово банка", typeLabel: "Заметка", relativeTime: "3 недели назад" },
 ];
 
-export function RecentList({ items = MOCK_ITEMS }: RecentListProps) {
+export function RecentList({ items = MOCK_ITEMS, onSelect }: RecentListProps) {
   return (
     <aside className="recent-list">
       <h2 className="recent-list__heading">Недавние</h2>
       <ul className="recent-list__items">
-        {items.map((item) => (
-          <li key={item.id} className="recent-list__row">
-            {item.hasUnsavedChanges ? (
-              <StatusDot kind="unsaved" className="recent-list__dot" />
-            ) : (
-              <span className="recent-list__dot recent-list__dot--empty" aria-hidden="true" />
-            )}
-            <span className="recent-list__text">
-              <span className="recent-list__title">{item.title}</span>
-              <span className="recent-list__meta">
-                {item.typeLabel} · {item.relativeTime}
+        {items.map((item) => {
+          const rowContent = (
+            <>
+              {item.hasUnsavedChanges ? (
+                <StatusDot kind="unsaved" className="recent-list__dot" />
+              ) : (
+                <span className="recent-list__dot recent-list__dot--empty" aria-hidden="true" />
+              )}
+              <span className="recent-list__text">
+                <span className="recent-list__title">{item.title}</span>
+                <span className="recent-list__meta">
+                  {item.typeLabel} · {item.relativeTime}
+                </span>
               </span>
-            </span>
-          </li>
-        ))}
+            </>
+          );
+          return (
+            <li key={item.id}>
+              {onSelect ? (
+                <button
+                  type="button"
+                  className="recent-list__row recent-list__row--btn"
+                  onClick={() => onSelect(item.id)}
+                >
+                  {rowContent}
+                </button>
+              ) : (
+                <div className="recent-list__row">{rowContent}</div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </aside>
   );

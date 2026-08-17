@@ -37,6 +37,14 @@ import { readVault } from "../lib/tauriApi";
 import { readSettings, updateSettings, DEFAULT_AUTO_LOCK_TIMEOUT_MS } from "../lib/settingsConfig";
 import { isValidPinFormat, setUpPin, resetPinLockout, PIN_MAX_LENGTH } from "../lib/pinLock";
 import { PasswordField } from "../components/PasswordField";
+import {
+  fetchLatestRelease,
+  isNewer,
+  shouldCheckNow,
+  UpdateCheckError,
+  RELEASES_PAGE_URL,
+} from "../lib/updateCheck";
+import { openExternal } from "../lib/openExternal";
 import "../tokens.css";
 import "./Settings.css";
 
@@ -370,6 +378,13 @@ export function Settings({
   const [timeoutError, setTimeoutError] = useState<string | null>(null);
   const [timeoutSaved, setTimeoutSaved] = useState(false);
 
+  // --- обновления ---
+  const [updateEnabled, setUpdateEnabled] = useState(false);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateResult, setUpdateResult] = useState<
+    { kind: "none" } | { kind: "found"; version: string; url: string } | { kind: "error"; message: string } | null
+  >(null);
+
   // --- путь к базе ---
   const [pathInput, setPathInput] = useState(vaultPath);
   const [pathBusy, setPathBusy] = useState(false);
@@ -391,12 +406,60 @@ export function Settings({
       if (cancelled) return;
       setAutoLockMinutes(msToMinutes(settings.autoLockTimeoutMs));
       setPinConfigured(Boolean(settings.pin));
+      setUpdateEnabled(settings.updateCheckEnabled === true);
+      // Автопроверка только когда разрешена и прошли сутки - см. `updateCheck.ts`.
+      if (settings.updateCheckEnabled === true && shouldCheckNow(settings.lastUpdateCheckAt, new Date())) {
+        void runUpdateCheck(true);
+      }
     });
     setPathInput(vaultPath);
     return () => {
       cancelled = true;
     };
   }, [vaultPath]);
+
+  /**
+   * Спросить GitHub о последней версии.
+   *
+   * `silent` - фоновая проверка при открытии настроек: она не показывает
+   * «обновлений нет» и не пишет об ошибке сети. Молчать про неудачу фоновой
+   * проверки правильно: человек её не заказывал, а красная строка на пустом
+   * месте выглядит поломкой приложения.
+   */
+  async function runUpdateCheck(silent = false) {
+    if (updateBusy) return;
+    setUpdateBusy(true);
+    if (!silent) setUpdateResult(null);
+    try {
+      const release = await fetchLatestRelease();
+      await updateSettings(vaultPath, { lastUpdateCheckAt: new Date().toISOString() });
+      if (isNewer(release.version, storageState?.appVersion ?? "0.0.0")) {
+        setUpdateResult({ kind: "found", version: release.version, url: release.url });
+      } else if (!silent) {
+        setUpdateResult({ kind: "none" });
+      }
+    } catch (err) {
+      console.error("Settings: проверка обновлений не удалась", err);
+      if (!silent) {
+        setUpdateResult({
+          kind: "error",
+          message: err instanceof UpdateCheckError ? err.message : "Проверка не удалась",
+        });
+      }
+    } finally {
+      setUpdateBusy(false);
+    }
+  }
+
+  async function handleToggleUpdateCheck(next: boolean) {
+    setUpdateEnabled(next);
+    try {
+      await updateSettings(vaultPath, { updateCheckEnabled: next });
+    } catch (err) {
+      console.error("Settings: не удалось сохранить настройку проверки обновлений", err);
+      setUpdateEnabled(!next);
+    }
+  }
 
   async function handleChangePassword(e: FormEvent) {
     e.preventDefault();
@@ -640,6 +703,77 @@ export function Settings({
             </p>
           )}
         </form>
+
+        <section className="settings__section">
+          <h2 className="settings__section-title">Обновления</h2>
+          {/*
+            Единственное место, где приложение выходит в сеть. Объяснение
+            развёрнутое и стоит ДО галочки, а не мелким шрифтом после: человек
+            должен понимать, на что соглашается, до того как согласился.
+          */}
+          <p className="settings__hint">
+            Всё остальное в программе работает без интернета. Проверка обновлений - единственное
+            исключение, и по умолчанию она выключена.
+          </p>
+          <p className="settings__hint">
+            Если включить, приложение раз в сутки спрашивает у GitHub номер последней выложенной
+            версии. Уходит только этот вопрос: ни база, ни её размер, ни названия записей, ни путь
+            к файлу в запрос не попадают и попасть не могут. GitHub при этом видит то же, что видит
+            любой сайт при открытии страницы - ваш IP-адрес и то, что с него спросили страницу
+            релизов cryptodermo. Номер вашей версии не передаётся: сравнение происходит уже на
+            вашей машине, после ответа.
+          </p>
+          <p className="settings__hint">
+            Скачивание и установка - вручную. Программа не умеет заменять сама себя, и это
+            сделано намеренно: приложение, способное подменить свой исполняемый файл, - лишний
+            путь внутрь для того, кто получит доступ к учётной записи GitHub.
+          </p>
+          <label className="settings__checkbox">
+            <input
+              type="checkbox"
+              checked={updateEnabled}
+              onChange={(e) => void handleToggleUpdateCheck(e.currentTarget.checked)}
+            />
+            <span>Проверять обновления автоматически, раз в сутки</span>
+          </label>
+          <div className="settings__row">
+            <button
+              type="button"
+              className="settings__submit"
+              onClick={() => void runUpdateCheck()}
+              disabled={updateBusy}
+            >
+              {updateBusy ? "Проверяю..." : "Проверить сейчас"}
+            </button>
+            <span className="settings__status" aria-live="polite">
+              {updateResult?.kind === "none" ? "У вас последняя версия" : ""}
+            </span>
+          </div>
+          {updateResult?.kind === "found" && (
+            <p className="settings__hint" role="status">
+              Доступна версия {updateResult.version}.{" "}
+              <button
+                type="button"
+                className="settings__link-btn"
+                onClick={() => void openExternal(updateResult.url)}
+              >
+                Открыть страницу релиза
+              </button>
+            </p>
+          )}
+          {updateResult?.kind === "error" && (
+            <p className="settings__error" role="alert">
+              {updateResult.message}.{" "}
+              <button
+                type="button"
+                className="settings__link-btn"
+                onClick={() => void openExternal(RELEASES_PAGE_URL)}
+              >
+                Открыть страницу релизов
+              </button>
+            </p>
+          )}
+        </section>
 
         <form className="settings__section" onSubmit={handleSavePath}>
           <h2 className="settings__section-title">Путь к базе</h2>

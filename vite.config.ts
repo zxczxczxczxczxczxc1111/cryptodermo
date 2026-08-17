@@ -57,6 +57,7 @@ export default defineConfig(async ({ mode }) => ({
             { find: /^@tauri-apps\/api\/core$/, replacement: mockModulePath("core") },
             { find: /^@tauri-apps\/api\/window$/, replacement: mockModulePath("window") },
             { find: /^@tauri-apps\/plugin-dialog$/, replacement: mockModulePath("dialog") },
+            { find: /^@tauri-apps\/plugin-opener$/, replacement: mockModulePath("opener") },
           ],
         }
       : undefined,

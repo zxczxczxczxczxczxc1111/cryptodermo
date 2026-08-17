@@ -5,7 +5,8 @@ import type { Attachment, Item, ItemField, ItemType, VaultStore } from "../lib/v
 import { writeVaultAtomic } from "../lib/tauriApi";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { StatusDot } from "./StatusDot";
-import { EyeIcon, CopyIcon, CheckIcon, QrIcon, StarIcon, DuplicateIcon } from "./icons";
+import { EyeIcon, CopyIcon, CheckIcon, QrIcon, StarIcon, DuplicateIcon, ExternalIcon } from "./icons";
+import { isOpenableUrl, openExternal } from "../lib/openExternal";
 import { buildQrMatrix, qrSvgPath, QrTooLongError, type QrMatrix } from "../lib/qr";
 import { looksLikeTotp } from "../lib/totp";
 import { TotpCode } from "./TotpCode";
@@ -164,6 +165,7 @@ const COPIED_LABEL = "Скопировано";
 const REVEAL_SHOW_LABEL = "Показать";
 const REVEAL_HIDE_LABEL = "Скрыть";
 const QR_LABEL = "Показать QR-код";
+const OPEN_LABEL = "Открыть в браузере";
 const PIN_LABEL = "Закрепить наверху";
 const UNPIN_LABEL = "Открепить";
 const DUPLICATE_LABEL = "Дублировать запись";
@@ -616,6 +618,22 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                       значение отсюда», только приёмник не буфер обмена, а
                       телефон. Отдельной крупной кнопки не заводим, иначе
                       строка поля превращается в панель инструментов. */}
+                  {/* Поле с адресом открывается в браузере одним нажатием -
+                      раньше его можно было только скопировать и вставить
+                      руками. Открываются только http и https, см.
+                      `openExternal`: отдать системе произвольную строку из
+                      базы значит позволить ей запускать посторонние программы. */}
+                  {isOpenableUrl(field.value) && (
+                    <button
+                      type="button"
+                      className="record-card__field-btn record-card__field-btn--icon"
+                      onClick={() => void openExternal(field.value)}
+                      aria-label={OPEN_LABEL}
+                      title={OPEN_LABEL}
+                    >
+                      <ExternalIcon />
+                    </button>
+                  )}
                   {/* QR со ссылкой otpauth:// - это перенос секрета на другое
                       устройство, а не передача кода, и здесь он был бы
                       ловушкой: сканирующий получил бы вечный доступ вместо

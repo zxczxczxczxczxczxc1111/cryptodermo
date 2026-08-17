@@ -143,3 +143,14 @@ export function PinIcon({ filled = false, size }: { filled?: boolean; size?: num
     </svg>
   );
 }
+
+/** Стрелка из рамки - открыть во внешнем браузере. */
+export function ExternalIcon({ size }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <path d="M14 4h6v6" />
+      <path d="M20 4l-8 8" />
+      <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </Glyph>
+  );
+}

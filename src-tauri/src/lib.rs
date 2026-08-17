@@ -10,6 +10,7 @@ mod vault_fs;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             vault_fs::read_vault,
             vault_fs::write_vault_atomic,

@@ -1,0 +1,74 @@
+/*
+ * Полоса заголовка вместо нативной рамки - см. TitleBar.tsx.
+ *
+ * Высота вынесена токеном на `:root` не для красоты: на неё опирается верхний
+ * отступ содержимого во всех экранах, и разъехавшиеся значения дали бы либо
+ * щель, либо перекрытие кнопок окна.
+ */
+
+.title-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  display: flex;
+  align-items: stretch;
+  height: var(--titlebar-h);
+  /* Подложки нет намеренно: на экране входа под полосой рисуется канвас с
+     сетью, и плашка сверху превратила бы его в окно с шапкой. */
+  background: transparent;
+  /* Сама полоса не должна перехватывать нажатия по содержимому под ней -
+     кликабельны только область перетаскивания и кнопки. */
+  pointer-events: none;
+}
+
+.title-bar__drag {
+  flex: 1;
+  pointer-events: auto;
+}
+
+.title-bar__controls {
+  display: flex;
+  pointer-events: auto;
+}
+
+.title-bar__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.title-bar__btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+}
+
+/* Единственное место в интерфейсе, где цвет означает опасность на наведении.
+   Красный крестик - настолько устоявшееся поведение окна Windows, что его
+   отсутствие читается как поломка, а не как выдержанность монохрома. */
+.title-bar__btn--close:hover {
+  background: var(--danger);
+  color: var(--bg);
+}
+
+.title-bar__btn:focus-visible {
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: calc(var(--focus-ring-offset) * -1);
+}
+
+/* Кнопки окна не должны съезжать вниз вместе с содержимым при нажатии -
+   глобальное правило `:active` в tokens.css двигает всё нажимаемое на пиксель,
+   а рамка окна обязана стоять неподвижно. */
+.title-bar__btn:active:not(:disabled) {
+  transform: none;
+}

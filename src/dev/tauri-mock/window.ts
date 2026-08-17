@@ -1,9 +1,10 @@
 /**
  * Подмена `@tauri-apps/api/window` для режима `--mode mock` (см. `fs.ts`).
  *
- * Боевой код зовёт ровно четыре метода: `destroy`, `isMinimized`,
- * `onCloseRequested`, `onResized` (`App.tsx:403`, `useAutoLock.ts:250`,
- * `LockScreen.tsx:1073`). Остальное не реализовано намеренно.
+ * Боевой код зовёт `destroy`, `isMinimized`, `onCloseRequested`, `onResized`
+ * (`App.tsx`, `useAutoLock.ts`, `LockScreen.tsx`), а с появлением своей полосы
+ * заголовка ещё и `minimize`, `toggleMaximize`, `close`, `isMaximized`
+ * (`TitleBar.tsx`). Остальное не реализовано намеренно.
  *
  * Важное ограничение, которое надо помнить при проверке: настоящее поведение
  * окна здесь не воспроизводится. Закрытие по крестику, сворачивание и смена
@@ -21,6 +22,25 @@ class MockWindow {
 
   async isMinimized(): Promise<boolean> {
     return false;
+  }
+
+  /* Управление окном из своей полосы заголовка. В браузере всё это
+     невыполнимо, но обязано не падать: без заглушек первый же рендер
+     `TitleBar` уронил бы приложение на `isMaximized()`. */
+  async isMaximized(): Promise<boolean> {
+    return false;
+  }
+
+  async minimize(): Promise<void> {
+    console.info("mock: window.minimize() - в браузере окно не сворачивается");
+  }
+
+  async toggleMaximize(): Promise<void> {
+    console.info("mock: window.toggleMaximize() - в браузере окно не разворачивается");
+  }
+
+  async close(): Promise<void> {
+    console.info("mock: window.close() - в браузере окно не закрывается");
   }
 
   async onCloseRequested(_handler: (event: unknown) => void): Promise<UnlistenFn> {

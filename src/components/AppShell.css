@@ -17,7 +17,12 @@
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
   grid-template-areas: "sidebar center";
+  /* Место под свою полосу заголовка: она `position: fixed` и прозрачная, но
+     кнопки окна в правом верхнем углу иначе легли бы поверх «Редактировать» и
+     «Удалить запись» в шапке карточки. */
+  padding-top: var(--titlebar-h);
   height: 100vh;
+  box-sizing: border-box;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);

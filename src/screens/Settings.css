@@ -11,7 +11,7 @@
   background: var(--surface);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
 }
 
 .settings__header {
@@ -26,7 +26,7 @@
 
 .settings__title {
   margin: 0;
-  font-size: var(--fs-ui-lg);
+  font-size: var(--fs-lg);
 }
 
 .settings__close-btn {
@@ -37,7 +37,7 @@
   border: none;
   background: transparent;
   color: var(--text-dim);
-  font-size: var(--fs-ui-lg);
+  font-size: var(--fs-lg);
   line-height: 1;
   cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast);
@@ -87,7 +87,9 @@
 
 .settings__section-title {
   margin: 0 0 var(--sp-1);
-  font-size: var(--fs-ui-lg);
+  color: var(--text-strong);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
 }
 
 .settings__label {
@@ -103,8 +105,8 @@
   border: var(--border-w) solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
 }
 
 .settings__input--narrow {
@@ -119,7 +121,7 @@
 .settings__hint {
   margin: 0;
   color: var(--text-dim);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
 }
 
 .settings__row {
@@ -137,7 +139,7 @@
   background: var(--btn-primary-bg);
   color: var(--btn-primary-fg);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
   font-weight: var(--fw-semibold);
   cursor: pointer;
   transition: background var(--transition-fast);
@@ -161,13 +163,13 @@
 
 .settings__status {
   color: var(--text);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
 }
 
 .settings__error {
   margin: 0;
   color: var(--danger);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
 }
 
 /*
@@ -178,9 +180,22 @@
  * читаются. Отсюда разделительная линия сверху у каждого блока и порядок:
  * сначала всё, что меняют, потом то, на что только смотрят.
  */
+/*
+ * Блоки, приехавшие в настройки: импорт-экспорт и «Состояние базы».
+ *
+ * Оформлены ровно так же, как исконные разделы (`.settings__section`), а не
+ * разделительной линией, как было сделано сначала: на одном экране не должно
+ * быть двух разных представлений одной и той же сущности «раздел настроек».
+ * Разница в оформлении читалась бы как разница в смысле, которой тут нет.
+ */
 .settings__block {
-  padding-top: var(--sp-6);
-  border-top: var(--border-w) solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-radius: var(--r-card);
+  border: var(--border-w) solid var(--border);
+  background: var(--surface-raised);
 }
 
 /* Справочные числа. Двухколоночная сетка, а не список пар в строку: значения

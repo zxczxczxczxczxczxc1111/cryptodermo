@@ -17,7 +17,7 @@
   background: var(--bg);
   color: var(--text-dim);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
 }
 
 .app-bootstrap p {
@@ -42,7 +42,7 @@
   background: var(--surface);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
 }
 
 .app-screen-panel__header {
@@ -57,7 +57,7 @@
 
 .app-screen-panel__title {
   margin: 0;
-  font-size: var(--fs-ui-lg);
+  font-size: var(--fs-lg);
 }
 
 .app-screen-panel__close-btn {
@@ -68,7 +68,7 @@
   border: none;
   background: transparent;
   color: var(--text-dim);
-  font-size: var(--fs-ui-lg);
+  font-size: var(--fs-lg);
   line-height: 1;
   cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast);
@@ -94,5 +94,5 @@
 .app-screen-panel__error {
   margin: var(--sp-3) 0 0;
   color: var(--danger);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
 }

@@ -56,8 +56,8 @@
   background: var(--surface-raised);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui-lg);
-  line-height: var(--lh-ui-lg);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
   transition: border-color var(--transition);
 }
 
@@ -85,7 +85,7 @@
   background: var(--surface-hover);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
   white-space: nowrap;
   cursor: pointer;
   transition: background var(--transition-fast);
@@ -118,7 +118,7 @@
   gap: var(--sp-3);
   padding: var(--sp-6) var(--sp-4);
   color: var(--text-faint);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
   text-align: center;
 }
 
@@ -137,7 +137,7 @@
   background: var(--btn-primary-bg);
   color: var(--btn-primary-fg);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
   font-weight: var(--fw-semibold);
   cursor: pointer;
   transition: background var(--transition-fast);
@@ -156,7 +156,7 @@
   flex: none;
   margin: 0;
   padding: var(--sp-6) var(--sp-4);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
   text-align: center;
   color: var(--danger);
 }
@@ -258,6 +258,6 @@
   justify-content: center;
   padding: var(--sp-8);
   color: var(--text-faint);
-  font-size: var(--fs-ui-lg);
+  font-size: var(--fs-lg);
   text-align: center;
 }

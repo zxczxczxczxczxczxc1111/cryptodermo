@@ -121,7 +121,7 @@
   width: max-content;
   max-width: min(420px, 90vw);
   text-align: center;
-  animation: lock-screen-fallback-in var(--transition-slow) ease-out;
+  animation: lock-screen-fallback-in var(--dur-slow) ease-out;
 }
 
 @keyframes lock-screen-fallback-in {
@@ -143,34 +143,26 @@
 
 .lock-screen__logo {
   /*
-   * 200px при исходнике 512px - это всё ещё уменьшение, а не растягивание,
-   * так что резкость не страдает. Размер выбран как акцентный сознательно:
-   * на экране больше нет ни одного элемента, который мог бы держать
-   * композицию, и логотип обязан быть не иллюстрацией, а центром.
+   * Логотип - тот же файл, что и иконка приложения.
+   *
+   * Изображение обновлено 17.08.2026 на присланный пользователем вырез с
+   * настоящей прозрачностью (1263x1245, RGBA). Это изменило три вещи:
+   *
+   * 1. РАДИАЛЬНОЙ МАСКИ БОЛЬШЕ НЕТ. Прежний файл был квадратом на чёрном, и
+   *    маска гасила его края, чтобы квадрат не проступал на фоне. У выреза
+   *    края уже прозрачные, а маска съедала бы кончики волос и бороды -
+   *    ровно ту деталь, ради которой картинку и меняли.
+   * 2. ПОДЪЁМА КОНТРАСТА БОЛЬШЕ НЕТ. Прежний исходник был тёмным и мягким, и
+   *    без `filter` читался вяло. Этот сам по себе контрастный: светлое лицо
+   *    на тёмной массе волос.
+   * 3. РАЗМЕР ПОДНЯТ до 240px. Исходник 1024px после подготовки, так что это
+   *    по-прежнему уменьшение, а не растягивание.
    */
-  width: 200px;
-  height: 200px;
-  /*
-   * Едва заметный подъём контраста. Исходник тёмный и мягкий, а маска ещё и
-   * гасит края - без этого лицо на чистом чёрном читается вяло. Значения
-   * намеренно почти незаметные: задача вытянуть изображение, а не сделать
-   * "обработанным".
-   */
-  filter: contrast(1.08) brightness(1.06);
+  width: 240px;
+  height: 240px;
   user-select: none;
-  /*
-   * Радиальная маска гасит края в прозрачность, иначе на фоне был бы виден
-   * квадрат изображения. Снизу растворение сильнее, чем сверху (второй
-   * градиент), - тогда лицо читается как ВЫХОДЯЩЕЕ из темноты, а не как
-   * висящее в пустоте. Два градиента перемножаются через mask-composite.
-   */
-  mask-image: radial-gradient(circle at 50% 46%, #000 58%, transparent 92%),
-    linear-gradient(to bottom, #000 78%, transparent 100%);
-  mask-composite: intersect;
-  -webkit-mask-image: radial-gradient(circle at 50% 46%, #000 58%, transparent 92%),
-    linear-gradient(to bottom, #000 78%, transparent 100%);
-  -webkit-mask-composite: source-in;
 }
+
 
 /*
  * Ячейки PIN. Одно скрытое поле ввода + нарисованные поверх ячейки: так
@@ -274,8 +266,8 @@
   border: var(--border-w) solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
 }
 
 .lock-screen__input:focus-visible {
@@ -299,7 +291,7 @@
   background: var(--btn-primary-bg);
   color: var(--bg);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
   cursor: pointer;
 }
 
@@ -316,7 +308,7 @@
 
 .lock-screen__status {
   color: var(--text-dim);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
   text-align: center;
 }
 
@@ -325,14 +317,14 @@
   flex-direction: column;
   gap: var(--sp-2);
   color: var(--danger);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
 }
 
 /* Подсказка "пароли не совпадают" (ветка создания базы) - тот же цвет
    ошибки, но inline под полем повтора, не отдельный блок с кнопкой. */
 .lock-screen__hint {
   color: var(--danger);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
   margin: 0;
 }
 
@@ -344,7 +336,7 @@
   background: transparent;
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
   cursor: pointer;
 }
 
@@ -358,7 +350,7 @@
   flex-direction: column;
   gap: var(--sp-3);
   color: var(--text);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
 }
 
 .lock-screen__conflict-actions {
@@ -374,7 +366,7 @@
   background: transparent;
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
   cursor: pointer;
 }
 

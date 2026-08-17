@@ -27,7 +27,7 @@
   background: var(--surface-hover);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
   cursor: pointer;
   transition: background var(--transition-fast);
 }
@@ -48,13 +48,13 @@
 
 .import-export-panel__status {
   margin: 0;
-  min-height: var(--lh-ui);
+  min-height: var(--lh-md);
   color: var(--text);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
 }
 
 .import-export-panel__error {
   margin: 0;
   color: var(--danger);
-  font-size: var(--fs-ui);
+  font-size: var(--fs-md);
 }

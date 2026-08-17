@@ -33,6 +33,9 @@
   overscroll-behavior: contain;
   overflow-y: auto;
   z-index: 100;
+  /* Затемнение проявляется, окно поднимается - две разные анимации, потому
+     что это два разных события: сначала гаснет фон, потом приходит диалог. */
+  animation: fade-in var(--dur-fast) ease-out;
 }
 
 .app-modal,
@@ -47,6 +50,7 @@
   box-shadow: var(--shadow-2);
   color: var(--text);
   font-family: var(--font-ui);
+  animation: zoom-in var(--dur-slow) ease-out;
 }
 
 .app-modal h2,

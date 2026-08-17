@@ -94,12 +94,12 @@
 }
 
 .app-shell__nav-item:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .app-shell__nav-item--active {
-  background: var(--accent-soft);
+  background: var(--surface-selected);
   color: var(--text);
 }
 

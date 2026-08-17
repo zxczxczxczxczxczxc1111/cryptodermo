@@ -8,7 +8,7 @@
 import sys
 
 SURFACES = {
-    "bg":       "#0a0c10",
+    "bg":       "#000000",
     "surface":  "#12161d",
     "raised":   "#1a1f28",
     "hover":    "#212734",

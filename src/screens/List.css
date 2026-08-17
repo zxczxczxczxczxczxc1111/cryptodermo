@@ -45,7 +45,6 @@
   font-family: var(--font-ui);
   font-size: var(--fs-ui-lg);
   line-height: var(--lh-ui-lg);
-  outline: none;
   transition: border-color var(--transition);
 }
 
@@ -53,6 +52,11 @@
   color: var(--text-faint);
 }
 
+/* Раньше здесь стоял `outline: none`, а фокус показывался только сменой цвета
+   рамки - заметно слабее, чем кольцо у всех прочих полей проекта, и
+   единственное место с отключённым outline. Теперь кольцо общее (правило в
+   tokens.css), а смена рамки осталась как дополнительный, не единственный
+   признак. */
 .list__search-input:focus-visible {
   border-color: var(--border-strong);
 }
@@ -79,8 +83,8 @@
 }
 
 .list__add-btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .list__count {
@@ -116,23 +120,23 @@
 .list__empty-btn {
   padding: var(--sp-2) var(--sp-4);
   border-radius: var(--r-field);
-  border: var(--border-w) solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--text);
+  border: var(--border-w) solid var(--btn-primary-bg);
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
   font-family: var(--font-ui);
   font-size: var(--fs-ui);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   cursor: pointer;
   transition: background var(--transition-fast);
 }
 
 .list__empty-btn:hover {
-  background: var(--surface-hover);
+  background: var(--btn-primary-bg-hover);
 }
 
 .list__empty-btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .list__error {
@@ -180,12 +184,12 @@
 }
 
 .list__row:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: -2px;
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: calc(-1 * var(--focus-ring-w));
 }
 
 .list__row--active {
-  background: var(--accent-soft);
+  background: var(--surface-selected);
 }
 
 .list__row-title-line {

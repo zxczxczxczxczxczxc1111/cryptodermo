@@ -90,8 +90,8 @@
 }
 
 .lock-screen__input:focus-visible {
-  outline: var(--border-w) solid var(--accent);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Поле ввода PIN (фича PIN-кода) - короче обычного поля пароля (задание:
@@ -107,7 +107,7 @@
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-field);
   border: none;
-  background: var(--accent);
+  background: var(--btn-primary-bg);
   color: var(--bg);
   font-family: var(--font-ui);
   font-size: var(--fs-ui);
@@ -121,8 +121,8 @@
 }
 
 .lock-screen__submit:focus-visible {
-  outline: var(--border-w) solid var(--accent);
-  outline-offset: var(--sp-1);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .lock-screen__status {
@@ -160,8 +160,8 @@
 }
 
 .lock-screen__recover:focus-visible {
-  outline: var(--border-w) solid var(--accent);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .lock-screen__conflict {
@@ -190,8 +190,8 @@
 }
 
 .lock-screen__conflict-actions button:focus-visible {
-  outline: var(--border-w) solid var(--accent);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .lock-screen__conflict-actions label {

@@ -61,8 +61,8 @@
 }
 
 .recent-list__row--btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: -2px;
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: calc(-1 * var(--focus-ring-w));
 }
 
 .recent-list__dot {

@@ -49,8 +49,8 @@
 }
 
 .settings__close-btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .settings__body {
@@ -101,8 +101,8 @@
 }
 
 .settings__input:focus-visible {
-  outline: var(--border-w) solid var(--accent);
-  outline-offset: 0;
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .settings__hint {
@@ -122,23 +122,23 @@
   align-self: flex-start;
   padding: var(--sp-2) var(--sp-4);
   border-radius: var(--r-field);
-  border: var(--border-w) solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--text);
+  border: var(--border-w) solid var(--btn-primary-bg);
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
   font-family: var(--font-ui);
   font-size: var(--fs-ui);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   cursor: pointer;
   transition: background var(--transition-fast);
 }
 
 .settings__submit:hover {
-  background: var(--surface-hover);
+  background: var(--btn-primary-bg-hover);
 }
 
 .settings__submit:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-1);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .settings__submit:disabled {
@@ -149,7 +149,7 @@
 }
 
 .settings__status {
-  color: var(--accent);
+  color: var(--text);
   font-size: var(--fs-ui);
 }
 

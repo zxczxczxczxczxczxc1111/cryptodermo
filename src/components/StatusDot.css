@@ -7,7 +7,7 @@
 }
 
 .status-dot--unsaved {
-  background: var(--accent);
+  background: var(--warn);
 }
 
 .status-dot--staleBackup {

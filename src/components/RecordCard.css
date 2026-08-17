@@ -70,8 +70,8 @@
 }
 
 .record-card__edit-btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .record-card__delete-btn {
@@ -99,8 +99,8 @@
 }
 
 .record-card__delete-btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .record-card__tags {
@@ -145,13 +145,13 @@
 }
 
 .record-card__tab:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .record-card__tab--active {
   color: var(--text);
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--text-strong);
 }
 
 .record-card__panel {
@@ -256,8 +256,8 @@
 }
 
 .record-card__field-btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .record-card__note {
@@ -358,7 +358,7 @@
  * у выпадающих меню, R61).
  */
 .record-card__modal-overlay {
-  --overlay-scrim: rgba(0, 0, 0, 0.5);
+  --overlay-scrim: var(--scrim);
 
   position: fixed;
   inset: 0;
@@ -370,7 +370,7 @@
 }
 
 .record-card__modal {
-  --local-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --local-shadow: var(--shadow-2);
 
   width: min(420px, 90vw);
   padding: var(--sp-6);
@@ -416,8 +416,8 @@
 }
 
 .record-card__modal-actions button:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Кнопка "Удалить" (деструктивное подтверждение) - НЕ основной акцент

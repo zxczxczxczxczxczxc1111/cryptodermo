@@ -80,8 +80,8 @@
 }
 
 .app-screen-panel__close-btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .app-screen-panel__body {
@@ -105,7 +105,7 @@
  * принцип, что и у joinPath/formatRelativeTime в App.tsx).
  */
 .app-modal-overlay {
-  --overlay-scrim: rgba(0, 0, 0, 0.5);
+  --overlay-scrim: var(--scrim);
 
   position: fixed;
   inset: 0;
@@ -117,7 +117,7 @@
 }
 
 .app-modal {
-  --local-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --local-shadow: var(--shadow-2);
 
   width: min(420px, 90vw);
   padding: var(--sp-6);
@@ -163,11 +163,13 @@
 }
 
 .app-modal__actions button:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .app-modal__actions button:last-child {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  font-weight: var(--fw-semibold);
 }

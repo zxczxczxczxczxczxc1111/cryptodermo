@@ -49,14 +49,14 @@
 }
 
 .editor__type-btn--active {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background: var(--surface-selected);
+  border-color: var(--border-strong);
   color: var(--text);
 }
 
 .editor__type-btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .editor__close-btn {
@@ -79,8 +79,8 @@
 }
 
 .editor__close-btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .editor__body {
@@ -134,8 +134,8 @@
 .editor__tag-input-row input:focus,
 .editor__field-name:focus,
 .editor__field-value:focus {
-  outline: var(--border-w) solid var(--accent);
-  outline-offset: 0;
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Значения полей (в т.ч. секретные) - моноширинный шрифт, третья роль
@@ -186,8 +186,8 @@
 
 .editor__tag-remove:focus-visible,
 .editor__field-remove:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .editor__tag-input-row {
@@ -226,8 +226,8 @@
 .editor__add-field-btn:focus-visible,
 .editor__generator-anchor > button:focus-visible,
 .editor__attach-btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .editor__attach-btn:disabled {
@@ -292,8 +292,8 @@
 }
 
 .editor__attachment-row button:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .editor__attachment-warning {
@@ -347,27 +347,27 @@
 .editor__save-btn {
   padding: var(--sp-2) var(--sp-4);
   border-radius: var(--r-field);
-  border: var(--border-w) solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--text);
+  border: var(--border-w) solid var(--btn-primary-bg);
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
   font-family: var(--font-ui);
   font-size: var(--fs-ui);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   cursor: pointer;
   transition: background var(--transition-fast);
 }
 
 .editor__save-btn:hover {
-  background: var(--surface-hover);
+  background: var(--btn-primary-bg-hover);
 }
 
 .editor__save-btn:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-1);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .editor__status {
-  color: var(--accent);
+  color: var(--text);
   font-size: var(--fs-ui);
 }
 
@@ -387,7 +387,7 @@
      роль, заводить общий токен вне зоны этого тикета), локальная
      переменная тем же приёмом, что и --local-shadow в .editor__modal ниже
      и в PasswordGenerator.css. */
-  --overlay-scrim: rgba(0, 0, 0, 0.5);
+  --overlay-scrim: var(--scrim);
 
   position: fixed;
   inset: 0;
@@ -399,7 +399,7 @@
 }
 
 .editor__modal {
-  --local-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --local-shadow: var(--shadow-2);
 
   width: min(420px, 90vw);
   padding: var(--sp-6);
@@ -445,11 +445,13 @@
 }
 
 .editor__modal-actions button:focus-visible {
-  outline: var(--border-w) solid var(--border-strong);
-  outline-offset: var(--sp-0);
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .editor__modal-actions button:last-child {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  font-weight: var(--fw-semibold);
 }

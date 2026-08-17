@@ -62,6 +62,7 @@ export default defineConfig(async ({ mode }) => ({
               find: /^@tauri-apps\/plugin-global-shortcut$/,
               replacement: mockModulePath("global-shortcut"),
             },
+            { find: /^@tauri-apps\/plugin-autostart$/, replacement: mockModulePath("autostart") },
           ],
         }
       : undefined,

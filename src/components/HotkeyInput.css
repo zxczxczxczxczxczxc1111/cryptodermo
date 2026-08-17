@@ -1,0 +1,38 @@
+/* Поле назначения сочетания - см. HotkeyInput.tsx. */
+
+.hotkey {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.hotkey__box {
+  min-width: 160px;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.hotkey__box:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+/* Ожидание нажатия - состояние, а не наведение, поэтому держится постоянно и
+   заметнее наведения. */
+.hotkey__box--listening {
+  border-color: var(--border-active);
+  color: var(--text-faint);
+}
+
+.hotkey__hint {
+  color: var(--warn);
+  font-size: var(--fs-sm);
+}

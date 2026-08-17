@@ -36,11 +36,15 @@ export function isPaletteHotkey(e: { ctrlKey: boolean; metaKey: boolean; key: st
 
 export interface QuickPaletteProps {
   store: VaultStore;
+  /** Растущий счётчик - просьба открыть палитру снаружи (глобальное сочетание).
+   * Счётчик, а не флаг: повторное нажатие должно срабатывать снова, а флаг
+   * после первого раза остался бы в том же значении. */
+  openSignal?: number;
   /** Открыть запись целиком - палитра при этом закрывается. */
   onOpenItem: (id: string) => void;
 }
 
-export function QuickPalette({ store, onOpenItem }: QuickPaletteProps) {
+export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPaletteProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Item[]>([]);
@@ -63,6 +67,17 @@ export function QuickPalette({ store, onOpenItem }: QuickPaletteProps) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Просьба снаружи. Пропускается при первом рендере: начальное значение
+  // счётчика не должно распахивать палитру на старте приложения.
+  const firstSignalRef = useRef(true);
+  useEffect(() => {
+    if (firstSignalRef.current) {
+      firstSignalRef.current = false;
+      return;
+    }
+    setOpen(true);
+  }, [openSignal]);
 
   useEffect(() => {
     if (!open) return;

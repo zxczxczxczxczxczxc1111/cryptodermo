@@ -25,6 +25,7 @@
  * ("PIN не настроен"), не ошибка.
  */
 import { readVault, writeVaultAtomic } from "./tauriApi";
+import { isValidAccel } from "./hotkey";
 import type { PinWrap, PinLockoutState } from "./pinLock";
 
 const SETTINGS_FILENAME = "vault.settings.json";
@@ -62,6 +63,12 @@ export type VaultSettings = {
   /** Когда проверяли в последний раз, ISO8601 - чтобы не спрашивать GitHub на
    * каждом запуске. */
   lastUpdateCheckAt?: string;
+  /** Глобальное сочетание клавиш вызова приложения, в формате Tauri
+   * (`CommandOrControl+Alt+C`). Отсутствует - сочетание не назначено. */
+  hotkey?: string;
+  /** Включён ли перехват сочетания. Отдельно от самого сочетания: выключив
+   * перехват, человек не должен потерять выбранную комбинацию. */
+  hotkeyEnabled?: boolean;
 };
 
 /** Значения по умолчанию - используются целиком, когда файла ещё нет, и
@@ -152,6 +159,12 @@ export async function readSettings(vaultPath: string): Promise<VaultSettings> {
     if (isValidPinWrap(obj.pin)) settings.pin = obj.pin;
     if (isValidPinLockoutState(obj.pinLockout)) settings.pinLockout = obj.pinLockout;
     if (typeof obj.pinSetupOffered === "boolean") settings.pinSetupOffered = obj.pinSetupOffered;
+    if (typeof obj.updateCheckEnabled === "boolean") settings.updateCheckEnabled = obj.updateCheckEnabled;
+    if (typeof obj.lastUpdateCheckAt === "string") settings.lastUpdateCheckAt = obj.lastUpdateCheckAt;
+    // Сочетание проверяется на осмысленность: в файле может лежать что угодно,
+    // включая правку руками, а негодная строка молча сломала бы регистрацию.
+    if (typeof obj.hotkey === "string" && isValidAccel(obj.hotkey)) settings.hotkey = obj.hotkey;
+    if (typeof obj.hotkeyEnabled === "boolean") settings.hotkeyEnabled = obj.hotkeyEnabled;
 
     return settings;
   } catch {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { QuickPalette } from "./components/QuickPalette";
+import { useGlobalHotkey, DEFAULT_HOTKEY } from "./hooks/useGlobalHotkey";
 import { useModalFocus } from "./hooks/useModalFocus";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -294,6 +295,16 @@ function App() {
   const [dataVersion, setDataVersion] = useState(0);
   const [timeoutMs, setTimeoutMs] = useState(DEFAULT_AUTO_LOCK_TIMEOUT_MS);
   const [remainingMs, setRemainingMs] = useState(DEFAULT_AUTO_LOCK_TIMEOUT_MS);
+  /**
+   * Глобальное сочетание вызова. Читается из настроек рядом с базой, поэтому
+   * появляется только после разблокировки - до неё пути к базе может не быть.
+   */
+  const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
+  const [hotkeyEnabled, setHotkeyEnabled] = useState(false);
+  /** Счётчик открытия палитры: сочетание не хранит состояние окна, а просит
+   * его открыть, и повторное нажатие должно срабатывать снова. */
+  const [paletteSignal, setPaletteSignal] = useState(0);
+
   const [lastBackupAt, setLastBackupAt] = useState<Date | null>(null);
   const [importCountWarning, setImportCountWarning] = useState<CountDecreaseWarning | null>(null);
   const importCountWarningRef = useRef<HTMLDivElement>(null);
@@ -337,6 +348,43 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  /**
+   * Настройки сочетания читаются после разблокировки: они лежат рядом с базой,
+   * и до открытия пути к ней может не быть. `dataVersion` в зависимостях,
+   * чтобы правка в настройках подхватывалась без перезапуска.
+   */
+  useEffect(() => {
+    if (!store || !vaultPath) return;
+    let cancelled = false;
+    void readSettings(vaultPath).then((settings) => {
+      if (cancelled) return;
+      setHotkey(settings.hotkey ?? DEFAULT_HOTKEY);
+      setHotkeyEnabled(settings.hotkeyEnabled === true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [store, vaultPath, dataVersion]);
+
+  /**
+   * Сочетание поднимает окно и открывает быстрый поиск. Не отдельное маленькое
+   * окно: приложение уже открыто, база расшифрована, и просить PIN второй раз
+   * значило бы делать хуже, чем есть.
+   */
+  useGlobalHotkey(hotkeyEnabled && store !== null, hotkey, () => {
+    void (async () => {
+      try {
+        const win = getCurrentWindow();
+        await win.unminimize();
+        await win.show();
+        await win.setFocus();
+      } catch (err) {
+        console.error("App: не удалось поднять окно по сочетанию", err);
+      }
+      setPaletteSignal((n) => n + 1);
+    })();
+  });
 
   // Время последнего бэкапа для нижней полосы (R66) - пересчитывается на
   // каждую новую сессию (store - новый объект после каждого onUnlock) и на
@@ -753,6 +801,7 @@ function App() {
           это не часть раскладки, а слой над ней. */}
       <QuickPalette
         store={store}
+        openSignal={paletteSignal}
         onOpenItem={(id) => void navigateTo({ kind: "editor", itemId: id })}
       />
       <AutoLockController

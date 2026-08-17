@@ -38,6 +38,9 @@ import { readSettings, updateSettings, DEFAULT_AUTO_LOCK_TIMEOUT_MS } from "../l
 import { isValidPinFormat, setUpPin, resetPinLockout, PIN_MAX_LENGTH } from "../lib/pinLock";
 import { PasswordField } from "../components/PasswordField";
 import { useModalFocus } from "../hooks/useModalFocus";
+import { HotkeyInput } from "../components/HotkeyInput";
+import { DEFAULT_HOTKEY } from "../hooks/useGlobalHotkey";
+import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import {
   fetchLatestRelease,
   isNewer,
@@ -391,6 +394,12 @@ export function Settings({
   const detailsRef = useRef<HTMLDivElement>(null);
   useModalFocus(detailsRef, details !== null);
 
+  // --- вызов из системы ---
+  const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
+  const [hotkeyEnabled, setHotkeyEnabled] = useState(false);
+  const [autostart, setAutostart] = useState(false);
+  const [autostartError, setAutostartError] = useState<string | null>(null);
+
   // --- обновления ---
   const [updateEnabled, setUpdateEnabled] = useState(false);
   const [updateBusy, setUpdateBusy] = useState(false);
@@ -420,6 +429,16 @@ export function Settings({
       setAutoLockMinutes(msToMinutes(settings.autoLockTimeoutMs));
       setPinConfigured(Boolean(settings.pin));
       setUpdateEnabled(settings.updateCheckEnabled === true);
+      setHotkey(settings.hotkey ?? DEFAULT_HOTKEY);
+      setHotkeyEnabled(settings.hotkeyEnabled === true);
+      // Состояние автозапуска спрашивается у системы, а не хранится у нас:
+      // человек мог убрать программу из автозапуска мимо приложения, и наша
+      // запись врала бы.
+      void isAutostartEnabled()
+        .then((value) => {
+          if (!cancelled) setAutostart(value);
+        })
+        .catch((err) => console.error("Settings: не удалось прочитать состояние автозапуска", err));
       // Автопроверка только когда разрешена и прошли сутки - см. `updateCheck.ts`.
       if (settings.updateCheckEnabled === true && shouldCheckNow(settings.lastUpdateCheckAt, new Date())) {
         void runUpdateCheck(true);
@@ -461,6 +480,37 @@ export function Settings({
       }
     } finally {
       setUpdateBusy(false);
+    }
+  }
+
+  async function handleHotkeyChange(next: string) {
+    setHotkey(next);
+    try {
+      await updateSettings(vaultPath, { hotkey: next });
+    } catch (err) {
+      console.error("Settings: не удалось сохранить сочетание клавиш", err);
+    }
+  }
+
+  async function handleToggleHotkey(next: boolean) {
+    setHotkeyEnabled(next);
+    try {
+      await updateSettings(vaultPath, { hotkeyEnabled: next });
+    } catch (err) {
+      console.error("Settings: не удалось сохранить настройку сочетания", err);
+      setHotkeyEnabled(!next);
+    }
+  }
+
+  async function handleToggleAutostart(next: boolean) {
+    setAutostartError(null);
+    try {
+      if (next) await enableAutostart();
+      else await disableAutostart();
+      setAutostart(next);
+    } catch (err) {
+      console.error("Settings: не удалось изменить автозапуск", err);
+      setAutostartError("Не удалось изменить автозапуск");
     }
   }
 
@@ -730,14 +780,45 @@ export function Settings({
         </form>
 
         <section className="settings__section">
-          <h2 className="settings__section-title">Быстрый доступ</h2>
+          <h2 className="settings__section-title">Вызов из системы</h2>
           <p className="settings__hint">
-            Маленькое окно по сочетанию клавиш: PIN, несколько букв, Enter - пароль в
-            буфере. Сочетание назначается в свойствах ярлыка Windows, не здесь.
+            Сочетание клавиш вызывает приложение из любой программы: набрал несколько
+            букв, Enter - пароль в буфере.
           </p>
+          <label className="settings__checkbox">
+            <input
+              type="checkbox"
+              checked={hotkeyEnabled}
+              onChange={(e) => void handleToggleHotkey(e.currentTarget.checked)}
+            />
+            <span>Перехватывать сочетание</span>
+          </label>
+          <HotkeyInput value={hotkey} onChange={(v) => void handleHotkeyChange(v)} disabled={!hotkeyEnabled} />
+          <p className="settings__hint">
+            Работает, пока приложение запущено: клавиши занимает живая программа, а не
+            система.
+          </p>
+          <label className="settings__checkbox">
+            <input
+              type="checkbox"
+              checked={autostart}
+              onChange={(e) => void handleToggleAutostart(e.currentTarget.checked)}
+            />
+            <span>Запускать вместе с Windows</span>
+          </label>
+          <p className="settings__hint">
+            Тогда сочетание работает всегда. Приложение при этом стартует
+            <strong> заблокированным</strong>: база не расшифрована, ключа в памяти нет,
+            и по сочетанию сначала спрашивается PIN.
+          </p>
+          {autostartError && (
+            <p className="settings__error" role="alert">
+              {autostartError}
+            </p>
+          )}
           <div className="settings__row">
             <button type="button" className="settings__link-btn" onClick={() => setDetails("quick")}>
-              Как назначить сочетание
+              Подробнее
             </button>
             <span className="settings__status">{pinConfigured ? "" : "Нужен PIN-код"}</span>
           </div>

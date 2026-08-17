@@ -26,6 +26,9 @@
     "global-shortcut:allow-is-registered",
     "core:window:allow-show",
     "core:window:allow-unminimize",
-    "core:window:allow-set-focus"
+    "core:window:allow-set-focus",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
   ]
 }

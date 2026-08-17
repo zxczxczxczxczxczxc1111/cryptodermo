@@ -421,3 +421,65 @@
 .editor__totp-hint--bad {
   color: var(--warn);
 }
+
+/* --- Аккаунты внутри записи --- */
+
+/* Блок аккаунта отделён рамкой и подложкой: иначе три учётки подряд читаются
+   как один длинный список полей, ради чего всё и затевалось. Общие поля
+   (блок без имени) рамки не получают - они не аккаунт. */
+.editor__group--account {
+  padding: var(--sp-3);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--fill-subtle);
+}
+
+.editor__group + .editor__group {
+  margin-top: var(--sp-3);
+}
+
+.editor__group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+/* Имя аккаунта - заголовок блока, поэтому крупнее полей и без рамки: рамка
+   превратила бы его в ещё одно поле формы, каким он по смыслу не является. */
+.editor__group-name {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-1) 0;
+  border: none;
+  border-bottom: var(--border-w) solid transparent;
+  background: transparent;
+  color: var(--text-strong);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+.editor__group-name:hover,
+.editor__group-name:focus {
+  border-bottom-color: var(--border-strong);
+  outline: none;
+}
+
+.editor__add-account-btn {
+  align-self: flex-start;
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--border-w) solid var(--border-strong);
+  border-radius: var(--r-field);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.editor__add-account-btn:hover {
+  background: var(--surface-hover);
+}

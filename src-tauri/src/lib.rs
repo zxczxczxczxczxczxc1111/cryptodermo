@@ -1,5 +1,6 @@
 use tauri::{
     menu::{Menu, MenuItem},
+    Emitter,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager,
 };
@@ -68,6 +69,21 @@ mod vault_fs;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // ПЕРВЫМ плагином, так требует документация: он должен перехватить
+        // повторный запуск до того, как приложение начнёт что-либо делать.
+        //
+        // Без него каждый запуск ярлыка плодил новый процесс, и в панели задач
+        // накапливались одинаковые значки (замечено пользователем 17.08.2026).
+        // Теперь второй запуск не создаёт процесс, а передаёт свои аргументы
+        // первому: ярлык быстрого доступа поднимает маленькое окно, обычный -
+        // основное.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if argv.iter().any(|arg| arg == "--quick") {
+                let _ = app.emit("single-instance:quick", ());
+            } else {
+                show_main_window(app);
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         // Глобальное сочетание регистрируется на стороне фронта: там же лежит

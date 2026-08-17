@@ -114,7 +114,7 @@ function isTotpValue(value: string): boolean {
 interface ItemLike {
   id: string;
   title: string;
-  fields: { name: string; value: string; secret: boolean }[];
+  fields: { name: string; value: string; secret: boolean; group?: string }[];
 }
 
 /**
@@ -130,7 +130,42 @@ interface ItemLike {
  */
 export function buildQuickRows(items: ItemLike[]): QuickResult[] {
   const rows: QuickResult[] = [];
-  for (const item of items) {
+  for (const original of items) {
+    let item = original;
+    // Если у записи есть аккаунты, пары берутся из них, а не угадываются по
+    // соседству полей: человек уже сказал, что к чему относится, и
+    // догадываться поверх его слов было бы неуважением к его же разметке.
+    const named = item.fields.filter((f) => f.group && f.group.trim() !== "");
+    if (named.length > 0) {
+      const seen: string[] = [];
+      for (const field of named) {
+        const name = field.group as string;
+        if (seen.includes(name)) continue;
+        seen.push(name);
+        const inGroup = item.fields.filter((f) => f.group === name);
+        const secret = inGroup.find(
+          (f) => f.secret && f.value.trim() !== "" && !isTotpValue(f.value),
+        );
+        if (!secret) continue;
+        const login = inGroup.find((f) => !f.secret && f.value.trim() !== "");
+        rows.push({
+          id: item.id,
+          title: item.title,
+          // Имя аккаунта важнее логина: человек назвал его сам, значит так ему
+          // и понятнее. Логин остаётся как уточнение, когда имени мало.
+          detail: login ? `${name} · ${login.value}` : name,
+          passwordField: secret.name,
+          loginField: login ? login.name : null,
+          loginValue: login ? login.value : null,
+          hasTotp: inGroup.some((f) => isTotpValue(f.value)),
+        });
+      }
+      // Поля вне аккаунтов у такой записи разбираются обычным путём ниже.
+      const loose = item.fields.filter((f) => !f.group || f.group.trim() === "");
+      if (loose.length === 0) continue;
+      item = { ...item, fields: loose };
+    }
+
     // Признак «показывать ли» - наличие заполненного пароля, а НЕ тип записи.
     // Сначала я скрывал заметки и ключи по типу, но тип тут ни при чём:
     // человек волен хранить пароль в записи любого типа, а запись без пароля

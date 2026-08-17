@@ -160,6 +160,30 @@ const SECRET_MASK = "••••••••";
  * Подтверждение копирования при этом двойное - галочка вместо иконки и живая
  * область `aria-live` ниже по разметке: смену иконки читалки не замечают.
  */
+/**
+ * Разложить поля по аккаунтам, сохраняя порядок.
+ *
+ * Общие поля первыми, аккаунты в порядке появления. Та же логика, что в
+ * редакторе (`groupFieldRows`), но на модели записи, а не на строках формы:
+ * тащить сюда тип формы означало бы связать карточку с редактором ради шести
+ * строк.
+ */
+export function cardFieldGroups(
+  fields: ItemField[],
+): Array<{ name: string | null; fields: ItemField[] }> {
+  const groups: Array<{ name: string | null; fields: ItemField[] }> = [{ name: null, fields: [] }];
+  for (const field of fields) {
+    const name = field.group && field.group.trim() !== "" ? field.group : null;
+    let group = groups.find((g) => g.name === name);
+    if (!group) {
+      group = { name, fields: [] };
+      groups.push(group);
+    }
+    group.fields.push(field);
+  }
+  return groups.filter((g) => g.fields.length > 0);
+}
+
 const COPY_LABEL = "Копировать";
 const COPIED_LABEL = "Скопировано";
 const REVEAL_SHOW_LABEL = "Показать";
@@ -548,7 +572,17 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
 
           {item.fields.length === 0 && <p className="record-card__empty">У записи пока нет полей.</p>}
 
-          {item.fields.map((field) => {
+          {/* Аккаунты внутри записи: поля с одинаковой пометкой `group`
+              собираются в блок с заголовком. Без разделения три учётки одного
+              сервиса лежали одной кашей, и понять, какой пароль к какой почте,
+              было нельзя. */}
+          {cardFieldGroups(item.fields).map((group) => (
+            <div
+              className={`record-card__group${group.name !== null ? " record-card__group--account" : ""}`}
+              key={group.name ?? "__common"}
+            >
+              {group.name !== null && <h3 className="record-card__group-title">{group.name}</h3>}
+              {group.fields.map((field) => {
             const isRevealed = !field.secret || revealed.has(field.name);
             const stale = field.secret && isSecretFieldStale(item, field.name);
             return (
@@ -652,7 +686,9 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                 </div>
               </div>
             );
-          })}
+              })}
+            </div>
+          ))}
 
           {item.note && (
             <div className="record-card__note">

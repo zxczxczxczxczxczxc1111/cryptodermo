@@ -574,3 +574,23 @@
   outline: var(--focus-ring-w) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
+
+/* --- Аккаунты внутри записи --- */
+
+/* Блок аккаунта отделён рамкой и подложкой: три учётки одного сервиса подряд
+   иначе читаются одним длинным списком полей - ровно то, ради чего блоки и
+   заводились. Общие поля рамки не получают, они не аккаунт. */
+.record-card__group--account {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--fill-subtle);
+}
+
+.record-card__group-title {
+  margin: 0 0 var(--sp-2);
+  color: var(--text-strong);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}

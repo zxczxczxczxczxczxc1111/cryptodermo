@@ -91,7 +91,14 @@ export const UNSAVED_CHANGES_TITLE = "Есть несохранённые изм
  * стабильный идентификатор только для React/фокуса внутри этого экрана,
  * наружу (в `ItemField`) не уходит - у полей записи в модели `vaultStore.ts`
  * своего id нет. */
-export type FieldRow = { key: string; name: string; value: string; secret: boolean };
+export type FieldRow = {
+  key: string;
+  name: string;
+  value: string;
+  secret: boolean;
+  /** Аккаунт внутри записи - см. `groupFieldRows`. */
+  group?: string;
+};
 
 /** Локальное состояние формы редактора - живёт, пока запись не сохранена;
  * после успешного сохранения (`finalizeSaveSuccess`) становится новой
@@ -337,7 +344,13 @@ export function itemToFormState(item: Item): EditorFormState {
     type: item.type,
     title: item.title,
     tags: [...item.tags],
-    fields: item.fields.map((f) => ({ key: makeFieldKey(), name: f.name, value: f.value, secret: f.secret })),
+    fields: item.fields.map((f) => ({
+      key: makeFieldKey(),
+      name: f.name,
+      value: f.value,
+      secret: f.secret,
+      ...(f.group ? { group: f.group } : {}),
+    })),
     note: item.note,
     attachments: item.attachments.map((a) => ({ ...a })),
   };
@@ -389,9 +402,80 @@ export function emptyFormState(defaultType: ItemType = "login"): EditorFormState
   return { type: defaultType, title: "", tags: [], fields: defaultFieldsFor(defaultType), note: "", attachments: [] };
 }
 
+/* -------------------------------------------------------------------------
+ * Аккаунты внутри записи.
+ *
+ * Поля остаются ПЛОСКИМ списком - и в форме, и в базе. Группировка это
+ * необязательная пометка `group` у поля, а блоки на экране собираются из неё
+ * на лету. Так сохранение, история изменений и вся остальная механика записи
+ * не знают о нововведении вовсе.
+ * ---------------------------------------------------------------------- */
+
+/** Имена полей, которые заводит кнопка «Добавить аккаунт». */
+export const ACCOUNT_LOGIN_FIELD = "Логин";
+export const ACCOUNT_PASSWORD_FIELD = "Пароль";
+
+export interface FieldGroup {
+  /** `null` - поля вне аккаунтов, относятся ко всей записи. */
+  name: string | null;
+  rows: FieldRow[];
+}
+
+/**
+ * Разложить плоский список на блоки, сохраняя порядок.
+ *
+ * Общие поля идут первыми, дальше аккаунты в том порядке, в каком встретились.
+ * Порядок именно встречи, а не алфавитный: человек сам решил, что записать
+ * сверху, и переставлять его записи мы не вправе.
+ */
+export function groupFieldRows(rows: FieldRow[]): FieldGroup[] {
+  const groups: FieldGroup[] = [{ name: null, rows: [] }];
+  for (const row of rows) {
+    const name = row.group && row.group.trim() !== "" ? row.group : null;
+    let group = groups.find((g) => g.name === name);
+    if (!group) {
+      group = { name, rows: [] };
+      groups.push(group);
+    }
+    group.rows.push(row);
+  }
+  // Пустой блок общих полей показывать незачем.
+  return groups.filter((g) => g.rows.length > 0 || g.name !== null);
+}
+
+/** Свободное имя для нового аккаунта: «Аккаунт 1», «Аккаунт 2» и так далее. */
+export function nextAccountName(rows: FieldRow[]): string {
+  const used = new Set(rows.map((r) => r.group).filter(Boolean));
+  let n = 1;
+  while (used.has(`Аккаунт ${n}`)) n += 1;
+  return `Аккаунт ${n}`;
+}
+
+/** Новый аккаунт: пустая пара логин-пароль с общей пометкой. */
+export function addAccountRows(rows: FieldRow[], name: string): FieldRow[] {
+  return [
+    ...rows,
+    { key: makeFieldKey(), name: ACCOUNT_LOGIN_FIELD, value: "", secret: false, group: name },
+    { key: makeFieldKey(), name: ACCOUNT_PASSWORD_FIELD, value: "", secret: true, group: name },
+  ];
+}
+
+/** Переименовать аккаунт. Пустое имя означает «вынести поля из аккаунта». */
+export function renameAccount(rows: FieldRow[], from: string, to: string): FieldRow[] {
+  const trimmed = to.trim();
+  return rows.map((r) =>
+    r.group === from ? { ...r, group: trimmed === "" ? undefined : trimmed } : r,
+  );
+}
+
+/** Удалить аккаунт вместе с его полями. */
+export function removeAccount(rows: FieldRow[], name: string): FieldRow[] {
+  return rows.filter((r) => r.group !== name);
+}
+
 export function addFieldRow(
   fields: FieldRow[],
-  preset?: { name?: string; secret?: boolean },
+  preset?: { name?: string; secret?: boolean; group?: string },
 ): FieldRow[] {
   return [
     ...fields,
@@ -400,6 +484,7 @@ export function addFieldRow(
       name: preset?.name ?? "",
       value: "",
       secret: preset?.secret ?? false,
+      ...(preset?.group ? { group: preset.group } : {}),
     },
   ];
 }
@@ -446,7 +531,14 @@ export function formStateToPatch(
     type: form.type,
     title: form.title,
     tags: form.tags,
-    fields: form.fields.map(({ name, value, secret }) => ({ name, value, secret })),
+    // `group` попадает в базу только когда он есть: запись без аккаунтов
+    // остаётся побайтово такой же, какой была до появления этой возможности.
+    fields: form.fields.map(({ name, value, secret, group }) => ({
+      name,
+      value,
+      secret,
+      ...(group && group.trim() !== "" ? { group } : {}),
+    })),
     note: form.note,
     attachments: form.attachments,
   };
@@ -993,8 +1085,50 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             </div>
           </div>
 
-          <div className="editor__fields">
-            {form.fields.map((row) => (
+          {/*
+            Поля разложены по аккаунтам. Сам список в форме остаётся плоским -
+            блоки собираются из необязательной пометки `group` у поля, поэтому
+            сохранение, история и вся остальная механика записи о них не знают.
+          */}
+          {groupFieldRows(form.fields).map((group) => (
+            <div
+              className={`editor__group${group.name !== null ? " editor__group--account" : ""}`}
+              key={group.name ?? "__common"}
+            >
+              {group.name !== null && (
+                <div className="editor__group-header">
+                  <input
+                    className="editor__group-name"
+                    type="text"
+                    aria-label="Название аккаунта"
+                    placeholder="Название аккаунта"
+                    value={group.name}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        fields: renameAccount(f.fields, group.name as string, e.currentTarget.value),
+                      }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="editor__field-remove"
+                    aria-label={`Удалить аккаунт ${group.name}`}
+                    title="Удалить аккаунт вместе с его полями"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        fields: removeAccount(f.fields, group.name as string),
+                      }))
+                    }
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
+              <div className="editor__fields">
+                {group.rows.map((row) => (
               <div className="editor__field-row" key={row.key}>
                 <input
                   className="editor__field-name"
@@ -1052,37 +1186,58 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
                   </p>
                 )}
               </div>
-            ))}
-          </div>
+                ))}
+              </div>
 
-          <div className="editor__field-buttons">
-            <button
-              type="button"
-              className="editor__add-field-btn"
-              onClick={() => setForm((f) => ({ ...f, fields: addFieldRow(f.fields) }))}
-            >
-              Добавить поле
-            </button>
-            {/*
-              Отдельная кнопка для двухфакторки. Без неё завести код можно было
-              только догадавшись создать поле и вставить туда ссылку
-              `otpauth://` - механика работала, а входа в неё не было
-              (замечено пользователем 17.08.2026).
-            */}
-            <button
-              type="button"
-              className="editor__add-field-btn"
-              onClick={() =>
-                setForm((f) => ({
-                  ...f,
-                  fields: addFieldRow(f.fields, { name: TOTP_FIELD_NAME, secret: true }),
-                }))
-              }
-            >
-              Код двухфакторки
-            </button>
-          </div>
+              <div className="editor__field-buttons">
+                <button
+                  type="button"
+                  className="editor__add-field-btn"
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      fields: addFieldRow(f.fields, group.name ? { group: group.name } : undefined),
+                    }))
+                  }
+                >
+                  Добавить поле
+                </button>
+                <button
+                  type="button"
+                  className="editor__add-field-btn"
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      fields: addFieldRow(f.fields, {
+                        name: TOTP_FIELD_NAME,
+                        secret: true,
+                        ...(group.name ? { group: group.name } : {}),
+                      }),
+                    }))
+                  }
+                >
+                  Код двухфакторки
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {/*
+            Аккаунт - несколько учёток одного сервиса в одной записи: три почты
+            gmail, у каждой свои логин, пароль и код. Без этого они лежали одной
+            кашей, и понять, какой пароль к какой почте, было нельзя.
+          */}
+          <button
+            type="button"
+            className="editor__add-account-btn"
+            onClick={() =>
+              setForm((f) => ({ ...f, fields: addAccountRows(f.fields, nextAccountName(f.fields)) }))
+            }
+          >
+            Добавить аккаунт
+          </button>
         </div>
+
 
         <div className="editor__section">
           <label className="editor__label" htmlFor={noteId}>
@@ -1102,7 +1257,6 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             }}
           />
         </div>
-
         <div
           className={`editor__section${dropActive ? " editor__section--drop" : ""}`}
           onDragOver={(e) => {

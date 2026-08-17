@@ -6,6 +6,7 @@ import { openQuickWindow } from "./lib/openQuickWindow";
 import { useModalFocus } from "./hooks/useModalFocus";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import { exeDir } from "./lib/tauriApi";
 import { readSettings, DEFAULT_AUTO_LOCK_TIMEOUT_MS } from "./lib/settingsConfig";
 import { VaultStore, ItemCountDecreasedError, type Item, type ItemType } from "./lib/vaultStore";
@@ -374,6 +375,41 @@ function App() {
 
   // Основное окно отвечает маленькому на запросы поиска и копирования.
   useQuickWindowServer(store);
+
+  /**
+   * Повторный запуск ярлыка быстрого доступа.
+   *
+   * Второй процесс не создаётся (плагин single-instance), а передаёт свои
+   * аргументы этому окну. Если база уже открыта, поднимаем маленькое окно; если
+   * заблокирована, показывать в нём нечего - поднимаем основное с вводом PIN.
+   */
+  useEffect(() => {
+    let alive = true;
+    let unlisten: (() => void) | undefined;
+    void listen("single-instance:quick", () => {
+      void (async () => {
+        if (store) {
+          await openQuickWindow();
+          return;
+        }
+        try {
+          const win = getCurrentWindow();
+          await win.show();
+          await win.unminimize();
+          await win.setFocus();
+        } catch (err) {
+          console.error("App: не удалось поднять окно по повторному запуску", err);
+        }
+      })();
+    }).then((off) => {
+      if (alive) unlisten = off;
+      else off();
+    });
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, [store]);
 
   /**
    * Сочетание поднимает МАЛЕНЬКОЕ окно, а не основное: вытаскивать на весь

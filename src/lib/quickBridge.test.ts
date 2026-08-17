@@ -84,3 +84,74 @@ describe("buildQuickRows", () => {
     expect(rows[0].hasTotp).toBe(true);
   });
 });
+
+describe("buildQuickRows с аккаунтами", () => {
+  const fg = (name: string, value: string, secret: boolean, group?: string) => ({
+    name,
+    value,
+    secret,
+    ...(group ? { group } : {}),
+  });
+
+  it("берёт пары из аккаунтов, а не угадывает по соседству полей", () => {
+    const rows = buildQuickRows([
+      {
+        id: "1",
+        title: "gmail",
+        fields: [
+          fg("Логин", "личная@gmail.com", false, "Личная"),
+          fg("Пароль", "p1", true, "Личная"),
+          fg("Логин", "работа@gmail.com", false, "Рабочая"),
+          fg("Пароль", "p2", true, "Рабочая"),
+        ],
+      },
+    ]);
+    expect(rows.map((r) => r.detail)).toEqual([
+      "Личная · личная@gmail.com",
+      "Рабочая · работа@gmail.com",
+    ]);
+    expect(rows.map((r) => r.loginValue)).toEqual(["личная@gmail.com", "работа@gmail.com"]);
+  });
+
+  it("двухфакторка считается внутри своего аккаунта", () => {
+    const rows = buildQuickRows([
+      {
+        id: "1",
+        title: "gmail",
+        fields: [
+          fg("Пароль", "p1", true, "С кодом"),
+          fg("2ФА", "otpauth://totp/X?secret=A", true, "С кодом"),
+          fg("Пароль", "p2", true, "Без кода"),
+        ],
+      },
+    ]);
+    expect(rows.map((r) => r.hasTotp)).toEqual([true, false]);
+  });
+
+  it("пропускает аккаунт без заполненного пароля", () => {
+    const rows = buildQuickRows([
+      {
+        id: "1",
+        title: "X",
+        fields: [fg("Логин", "u", false, "Пустой"), fg("Пароль", "  ", true, "Пустой")],
+      },
+    ]);
+    expect(rows).toEqual([]);
+  });
+
+  it("поля вне аккаунтов у той же записи тоже попадают в список", () => {
+    const rows = buildQuickRows([
+      {
+        id: "1",
+        title: "X",
+        fields: [
+          fg("Логин", "u", false, "Аккаунт"),
+          fg("Пароль", "p", true, "Аккаунт"),
+          fg("Общий пароль", "g", true),
+        ],
+      },
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows[1].passwordField).toBe("Общий пароль");
+  });
+});

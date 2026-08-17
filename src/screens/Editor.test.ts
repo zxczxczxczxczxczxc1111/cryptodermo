@@ -23,6 +23,11 @@ import {
   buildAttachmentSizeWarning,
   inputValueFromEvent,
   resolveGeneratorTarget,
+  groupFieldRows,
+  nextAccountName,
+  addAccountRows,
+  renameAccount,
+  removeAccount,
   type FieldRow,
 } from "./Editor";
 
@@ -420,5 +425,65 @@ describe("Вложения реально сохраняются и удаляю
     store.updateItem(created.id, formStateToPatch(withoutAttachment));
 
     expect(store.search("")[0].attachments).toEqual([]);
+  });
+});
+
+describe("аккаунты внутри записи", () => {
+  const row = (name: string, group?: string): FieldRow => ({
+    key: name + (group ?? ""),
+    name,
+    value: "",
+    secret: false,
+    ...(group ? { group } : {}),
+  });
+
+  it("общие поля идут первым блоком, аккаунты - в порядке появления", () => {
+    // Порядок именно появления, а не алфавитный: человек сам решил, что
+    // записать сверху, и переставлять его записи мы не вправе.
+    const groups = groupFieldRows([
+      row("Сайт"),
+      row("Логин", "Рабочая"),
+      row("Логин", "Личная"),
+      row("Заметка"),
+    ]);
+    expect(groups.map((g) => g.name)).toEqual([null, "Рабочая", "Личная"]);
+    expect(groups[0].rows.map((r) => r.name)).toEqual(["Сайт", "Заметка"]);
+  });
+
+  it("не показывает пустой блок общих полей", () => {
+    const groups = groupFieldRows([row("Логин", "A")]);
+    expect(groups.map((g) => g.name)).toEqual(["A"]);
+  });
+
+  it("новый аккаунт получает свободное имя", () => {
+    const rows = [row("Логин", "Аккаунт 1")];
+    expect(nextAccountName(rows)).toBe("Аккаунт 2");
+    expect(nextAccountName([])).toBe("Аккаунт 1");
+  });
+
+  it("добавление аккаунта заводит пару логин-пароль", () => {
+    const rows = addAccountRows([], "Личная");
+    expect(rows.map((r) => [r.name, r.secret, r.group])).toEqual([
+      ["Логин", false, "Личная"],
+      ["Пароль", true, "Личная"],
+    ]);
+  });
+
+  it("переименование трогает только свой аккаунт", () => {
+    const rows = [row("Логин", "A"), row("Логин", "B")];
+    const renamed = renameAccount(rows, "A", "Рабочая");
+    expect(renamed.map((r) => r.group)).toEqual(["Рабочая", "B"]);
+  });
+
+  it("пустое имя выносит поля из аккаунта, а не оставляет пустую строку", () => {
+    // Иначе в базе появился бы `group: ""`, который ничего не значит, но
+    // отличает запись от такой же без аккаунтов.
+    const rows = renameAccount([row("Логин", "A")], "A", "   ");
+    expect(rows[0].group).toBeUndefined();
+  });
+
+  it("удаление аккаунта убирает его поля", () => {
+    const rows = removeAccount([row("Логин", "A"), row("Сайт")], "A");
+    expect(rows.map((r) => r.name)).toEqual(["Сайт"]);
   });
 });

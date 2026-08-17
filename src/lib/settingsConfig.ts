@@ -66,6 +66,14 @@ export type VaultSettings = {
   /** Глобальное сочетание клавиш вызова приложения, в формате Tauri
    * (`CommandOrControl+Alt+C`). Отсутствует - сочетание не назначено. */
   hotkey?: string;
+  /**
+   * Закрытие окна сворачивает программу в область уведомлений вместо выхода.
+   *
+   * Смысл настройки в том, что глобальное сочетание работает только пока
+   * процесс жив: включив это, можно открыть приложение один раз за день и
+   * дальше пользоваться клавишами, не добавляя программу в автозапуск.
+   */
+  closeToTray?: boolean;
   /** Включён ли перехват сочетания. Отдельно от самого сочетания: выключив
    * перехват, человек не должен потерять выбранную комбинацию. */
   hotkeyEnabled?: boolean;
@@ -165,6 +173,7 @@ export async function readSettings(vaultPath: string): Promise<VaultSettings> {
     // включая правку руками, а негодная строка молча сломала бы регистрацию.
     if (typeof obj.hotkey === "string" && isValidAccel(obj.hotkey)) settings.hotkey = obj.hotkey;
     if (typeof obj.hotkeyEnabled === "boolean") settings.hotkeyEnabled = obj.hotkeyEnabled;
+    if (typeof obj.closeToTray === "boolean") settings.closeToTray = obj.closeToTray;
 
     return settings;
   } catch {

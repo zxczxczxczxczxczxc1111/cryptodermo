@@ -398,6 +398,7 @@ export function Settings({
   const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
   const [hotkeyEnabled, setHotkeyEnabled] = useState(false);
   const [autostart, setAutostart] = useState(false);
+  const [closeToTray, setCloseToTray] = useState(false);
   const [autostartError, setAutostartError] = useState<string | null>(null);
 
   // --- обновления ---
@@ -431,6 +432,7 @@ export function Settings({
       setUpdateEnabled(settings.updateCheckEnabled === true);
       setHotkey(settings.hotkey ?? DEFAULT_HOTKEY);
       setHotkeyEnabled(settings.hotkeyEnabled === true);
+      setCloseToTray(settings.closeToTray === true);
       // Состояние автозапуска спрашивается у системы, а не хранится у нас:
       // человек мог убрать программу из автозапуска мимо приложения, и наша
       // запись врала бы.
@@ -499,6 +501,16 @@ export function Settings({
     } catch (err) {
       console.error("Settings: не удалось сохранить настройку сочетания", err);
       setHotkeyEnabled(!next);
+    }
+  }
+
+  async function handleToggleCloseToTray(next: boolean) {
+    setCloseToTray(next);
+    try {
+      await updateSettings(vaultPath, { closeToTray: next });
+    } catch (err) {
+      console.error("Settings: не удалось сохранить поведение при закрытии", err);
+      setCloseToTray(!next);
     }
   }
 
@@ -801,13 +813,26 @@ export function Settings({
           <label className="settings__checkbox">
             <input
               type="checkbox"
+              checked={closeToTray}
+              onChange={(e) => void handleToggleCloseToTray(e.currentTarget.checked)}
+            />
+            <span>При закрытии сворачивать в трей</span>
+          </label>
+          <p className="settings__hint">
+            Тогда достаточно открыть приложение один раз: закрытое окно уходит в область
+            уведомлений, программа остаётся в памяти, и сочетание работает до конца дня.
+            Выйти совсем - правой кнопкой по значку в трее.
+          </p>
+          <label className="settings__checkbox">
+            <input
+              type="checkbox"
               checked={autostart}
               onChange={(e) => void handleToggleAutostart(e.currentTarget.checked)}
             />
             <span>Запускать вместе с Windows</span>
           </label>
           <p className="settings__hint">
-            Тогда сочетание работает всегда. Приложение при этом стартует
+            Если открывать вручную не хочется вовсе. Приложение стартует
             <strong> заблокированным</strong>: база не расшифрована, ключа в памяти нет,
             и по сочетанию сначала спрашивается PIN.
           </p>

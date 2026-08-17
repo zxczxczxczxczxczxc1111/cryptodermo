@@ -301,6 +301,12 @@ function App() {
    */
   const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
   const [hotkeyEnabled, setHotkeyEnabled] = useState(false);
+  /**
+   * Закрытие окна сворачивает в трей. В ref, а не только в состоянии:
+   * обработчик закрытия подписывается один раз при монтировании и обязан
+   * видеть актуальное значение, а не то, что было на момент подписки.
+   */
+  const closeToTrayRef = useRef(false);
   /** Счётчик открытия палитры: сочетание не хранит состояние окна, а просит
    * его открыть, и повторное нажатие должно срабатывать снова. */
   const [paletteSignal, setPaletteSignal] = useState(0);
@@ -361,6 +367,7 @@ function App() {
       if (cancelled) return;
       setHotkey(settings.hotkey ?? DEFAULT_HOTKEY);
       setHotkeyEnabled(settings.hotkeyEnabled === true);
+      closeToTrayRef.current = settings.closeToTray === true;
     });
     return () => {
       cancelled = true;
@@ -474,6 +481,18 @@ function App() {
         // `@tauri-apps/api/window`), что вернуло бы выполнение в этот же
         // обработчик; `destroy()` закрывает окно напрямую, без повторного
         // события.
+        // Сворачивание в трей вместо выхода. Проверяется ПОСЛЕ вопроса о
+        // несохранённых изменениях: спрятать окно с недописанной записью и
+        // сделать вид, что всё в порядке, было бы хуже, чем закрыть.
+        if (closeToTrayRef.current) {
+          event.preventDefault();
+          try {
+            await getCurrentWindow().hide();
+          } catch (err) {
+            console.error("App: не удалось свернуть окно в трей", err);
+          }
+          return;
+        }
         try {
           await getCurrentWindow().destroy();
         } catch (err) {

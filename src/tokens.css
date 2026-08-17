@@ -445,14 +445,64 @@ body {
 }
 
 /*
- * Нативные контролы: девять чекбоксов в генераторе паролей и редакторе плюс
- * один ползунок длины. Без `accent-color` Windows рисует их СИНИМИ - то есть
- * ровно тот оттенок, из-за которого перебиралась вся палитра, оставался бы
- * посреди монохромного интерфейса. Один этот приём избавляет от необходимости
- * подменять контролы самодельными.
+ * Нативные контролы.
+ *
+ * `accent-color` остаётся для радио и ползунка: без него Windows рисует их
+ * СИНИМИ, то есть ровно тем оттенком, из-за которого перебиралась вся палитра.
  */
-:where(input[type="checkbox"], input[type="radio"], input[type="range"]) {
+:where(input[type="radio"], input[type="range"]) {
   accent-color: var(--text-strong);
+}
+
+/*
+ * Чекбокс рисуется свой.
+ *
+ * `accent-color` спасал от синевы, но форму и размер оставлял системными: на
+ * фоне наших полей и кнопок это заметно чужой элемент (замечено пользователем
+ * 17.08.2026). Правило глобальное, а не в отдельном компоненте: чекбоксы
+ * встречаются в настройках, генераторе паролей и редакторе, и разъехаться они
+ * не должны.
+ */
+input[type="checkbox"] {
+  appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: var(--border-w) solid var(--border-active);
+  border-radius: var(--r-chip);
+  background: var(--fill-subtle);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+input[type="checkbox"]:hover:not(:disabled) {
+  border-color: var(--text-dim);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--text-strong);
+  border-color: var(--text-strong);
+}
+
+/*
+ * Галочка - две стороны рамки, повёрнутые на 45 градусов. Не символ и не
+ * картинка: символ зависит от шрифта, а картинка не подстроится под цвет.
+ */
+input[type="checkbox"]:checked::after {
+  content: "";
+  display: block;
+  width: 3px;
+  height: 7px;
+  margin: 1px auto 0;
+  border: solid var(--bg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /*

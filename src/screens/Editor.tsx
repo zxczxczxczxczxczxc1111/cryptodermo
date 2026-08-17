@@ -79,7 +79,7 @@ export const UNSAVED_CHANGES_TITLE = "Есть несохранённые изм
  * стабильный идентификатор только для React/фокуса внутри этого экрана,
  * наружу (в `ItemField`) не уходит - у полей записи в модели `vaultStore.ts`
  * своего id нет. */
-type FieldRow = { key: string; name: string; value: string; secret: boolean };
+export type FieldRow = { key: string; name: string; value: string; secret: boolean };
 
 /** Локальное состояние формы редактора - живёт, пока запись не сохранена;
  * после успешного сохранения (`finalizeSaveSuccess`) становится новой
@@ -96,10 +96,74 @@ type EditorFormState = {
 /** Что положить в поле, которое было в фокусе на момент открытия генератора
  * паролей (R49) - заметка и название тоже валидные цели, не только поля
  * записи (например, пароль как заметка целиком). */
-type FocusTarget = { kind: "title" } | { kind: "note" } | { kind: "field"; key: string };
+export type FocusTarget = { kind: "title" } | { kind: "note" } | { kind: "field"; key: string };
+
+/**
+ * Результат резолва цели генератора паролей (R49) - чистая функция, вынесена
+ * из `openGenerator` ради теста (нет jsdom - см. шапку файла). `"existing"` -
+ * куда вставить пароль немедленно (явный фокус или уже существующее первое
+ * поле); `"createField"` - ни фокуса, ни полей нет, вызывающий код обязан
+ * СНАЧАЛА создать новое секретное поле и только потом вставлять туда, а НЕ
+ * подставлять title/note по умолчанию (см. `resolveGeneratorTarget` ниже).
+ */
+export type GeneratorTargetResolution = { kind: "existing"; target: FocusTarget } | { kind: "createField" };
+
+/**
+ * Куда должен попасть сгенерированный пароль. Явный фокус (пользователь
+ * кликнул в конкретное поле/заметку/название перед открытием генератора)
+ * уважается как есть, ВКЛЮЧАЯ title/note - осознанный выбор пользователя
+ * (например, пароль как заметка целиком, см. комментарий у `FocusTarget`
+ * выше). Если явного фокуса нет - используется первое существующее поле
+ * записи, если оно есть.
+ *
+ * Если нет ни явного фокуса, ни единого поля - НИКОГДА не возвращает
+ * `{ kind: "existing", target: { kind: "title" } }`. Находка живого прогона
+ * (2026-08-17, репорт после исправления краша Editor.tsx:776): для записи
+ * без единого поля (note/other сразу после создания, либо login/card после
+ * того, как пользователь удалил все поля кнопками "×") прежний запасной
+ * вариант `{ kind: "title" }` молча писал сгенерированный пароль в ЗАГОЛОВОК
+ * записи при вставке - запись сохранялась с паролем вместо названия и
+ * пустым полем "Пароль" - реальная потеря данных, не только визуальная
+ * странность. В этом случае функция возвращает `"createField"` - вызывающий
+ * код создаёт новое секретное поле специально под пароль.
+ */
+export function resolveGeneratorTarget(
+  lastFocusTarget: FocusTarget | null,
+  fields: readonly FieldRow[],
+): GeneratorTargetResolution {
+  if (lastFocusTarget) return { kind: "existing", target: lastFocusTarget };
+  if (fields[0]) return { kind: "existing", target: { kind: "field", key: fields[0].key } };
+  return { kind: "createField" };
+}
 
 function makeFieldKey(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * Значение controlled-инпута, прочитанное из React-события СИНХРОННО, в
+ * момент вызова обработчика - не внутри апдейтера `setState`, вызванного
+ * позже. Вынесена в функцию (не инлайн `e.currentTarget.value`) ради теста
+ * ниже (Editor.test.ts) и как явная граница "читать здесь, не в замыкании".
+ *
+ * Регрессия бага живого прогона (2026-08-17, создание записи): апдейтеры
+ * `title`/`note` читали `e.currentTarget.value` ЛЕНИВО, внутри своего
+ * замыкания `setForm((f) => ({ ...f, title: e.currentTarget.value }))`.
+ * React обнуляет `e.currentTarget` синтетического события сразу после
+ * завершения обработчика, который его получил; `React.StrictMode`
+ * (src/main.tsx) в dev-режиме повторно вызывает апдейтеры `useState` на
+ * СЛЕДУЮЩЕМ рендере компонента ради проверки их чистоты (React
+ * официально документирует это как способ поймать нечистые редьюсеры) - и
+ * этот повторный вызов находил уже обнулённый `e.currentTarget`, роняя всё
+ * дерево ("Cannot read properties of null (reading 'value')" в
+ * Editor.tsx:776, воспроизведено вживую: ввести название -> нажать
+ * "Сгенерировать пароль", любое следующее действие вызывает перерендер).
+ * `updateField`/`setTagDraft` в этом файле уже читали значение так же
+ * эагерно - баг был именно в двух местах (title/note), которые из этого
+ * паттерна выбивались.
+ */
+export function inputValueFromEvent(e: { currentTarget: { value: string } }): string {
+  return e.currentTarget.value;
 }
 
 /** base64 (стандартный алфавит) -> байты, без Node-специфичного Buffer.
@@ -708,9 +772,19 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     void requestCloseInternal();
   }
 
+  /** Решение "куда пойдёт пароль" - см. `resolveGeneratorTarget` выше (R49,
+   * находка живого прогона 2026-08-17). Здесь только сторона с эффектами:
+   * при `"createField"` реально создаёт новое секретное поле в форме -
+   * саму логику решения `resolveGeneratorTarget` это не касается. */
   function openGenerator() {
-    generatorTargetRef.current =
-      lastFocusTargetRef.current ?? (form.fields[0] ? { kind: "field", key: form.fields[0].key } : { kind: "title" });
+    const resolution = resolveGeneratorTarget(lastFocusTargetRef.current, form.fields);
+    if (resolution.kind === "existing") {
+      generatorTargetRef.current = resolution.target;
+    } else {
+      const newField: FieldRow = { key: makeFieldKey(), name: "Пароль", value: "", secret: true };
+      setForm((f) => ({ ...f, fields: [...f.fields, newField] }));
+      generatorTargetRef.current = { kind: "field", key: newField.key };
+    }
     setGeneratorOpen(true);
   }
 
@@ -773,7 +847,10 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             onFocus={() => {
               lastFocusTargetRef.current = { kind: "title" };
             }}
-            onChange={(e) => setForm((f) => ({ ...f, title: e.currentTarget.value }))}
+            onChange={(e) => {
+              const value = inputValueFromEvent(e);
+              setForm((f) => ({ ...f, title: value }));
+            }}
           />
         </div>
 
@@ -894,7 +971,10 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             onFocus={() => {
               lastFocusTargetRef.current = { kind: "note" };
             }}
-            onChange={(e) => setForm((f) => ({ ...f, note: e.currentTarget.value }))}
+            onChange={(e) => {
+              const value = inputValueFromEvent(e);
+              setForm((f) => ({ ...f, note: value }));
+            }}
           />
         </div>
 

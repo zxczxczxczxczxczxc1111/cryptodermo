@@ -20,6 +20,9 @@ import {
   addAttachment,
   removeAttachment,
   buildAttachmentSizeWarning,
+  inputValueFromEvent,
+  resolveGeneratorTarget,
+  type FieldRow,
 } from "./Editor";
 
 // Швы из spec.md §9/§14 и тикета 08 (R28, R84, R98.1, R19). В проекте нет
@@ -295,6 +298,87 @@ describe("buildAttachmentSizeWarning: R44.3 - предупреждение, не
 
   it("не отказывает и не бросает исключение ни при каком размере - только текст или null (приоритет 1 выше приоритета 4)", () => {
     expect(() => buildAttachmentSizeWarning(10 * 1024 * MB, 10 * 1024 * MB)).not.toThrow();
+  });
+});
+
+// Регрессия живого прогона (2026-08-17): создание записи роняло всё React-
+// дерево в белый экран - "Cannot read properties of null (reading 'value')"
+// в Editor.tsx:776 (поле "Название"). Причина: апдейтер setForm читал
+// e.currentTarget.value ЛЕНИВО, внутри своего замыкания, а не сразу в
+// обработчике. React обнуляет e.currentTarget синтетического события сразу
+// после завершения обработчика; React.StrictMode (src/main.tsx, dev-режим)
+// повторно вызывает апдейтеры useState на следующем рендере компонента ради
+// проверки их чистоты - и находил уже обнулённый e.currentTarget. Тест ниже
+// доказывает главное свойство фикса: значение захватывается СИНХРОННО в
+// момент вызова, а не читается заново из объекта события позже (когда тот
+// уже мог измениться/стать недействительным) - без этого свойства тест был
+// бы тавтологическим (просто проверял бы passthrough).
+describe("Регрессия: краш при повторном вызове апдейтера useState с обнулённым e.currentTarget (живой прогон 2026-08-17)", () => {
+  it("inputValueFromEvent захватывает значение сразу - результат не меняется, если currentTarget мутирует позже", () => {
+    const target = { value: "New Title" };
+    const fakeEvent = { currentTarget: target };
+
+    const captured = inputValueFromEvent(fakeEvent);
+
+    // Симулирует то, что реально происходит между исходным событием и
+    // повторным вызовом апдейтера StrictMode: тот же объект currentTarget
+    // меняется/устаревает уже ПОСЛЕ того, как обработчик его прочитал.
+    target.value = "changed after the handler already returned";
+
+    expect(captured).toBe("New Title");
+  });
+
+  it("бросает на попытке прочитать значение из объекта с currentTarget: null - тот же тип объекта, который реально приходил в апдейтер после StrictMode-обнуления (документирует форму краша, не только исправление)", () => {
+    // TS не пропустил бы currentTarget: null напрямую (сигнатура требует
+    // непустой { value: string }) - здесь воспроизводится именно то, что
+    // видел баг в реальности: JS не мешает вызвать функцию с "неправильным"
+    // объектом даже при строгой типизации на границе, а именно так апдейтер
+    // и получал уже обнулённый e.currentTarget до фикса.
+    const staleEvent = { currentTarget: null } as unknown as { currentTarget: { value: string } };
+    expect(() => inputValueFromEvent(staleEvent)).toThrow(TypeError);
+  });
+});
+
+// Регрессия живого прогона (2026-08-17, репорт ПОСЛЕ фикса краша выше):
+// открыть генератор на свежей записи без единого поля (note/other сразу
+// после создания, либо login/card после удаления всех полей) и без клика в
+// какое-либо поле, вставить пароль - раньше он молча попадал в TITLE
+// записи (запись сохранялась с паролем вместо названия и пустым полем
+// "Пароль" - реальная потеря данных пользователя, не просто визуальный
+// баг). Тест ниже доказывает главное свойство фикса: без явного фокуса
+// resolveGeneratorTarget НИКОГДА не резолвится в title/note, когда полей
+// нет - только "createField".
+describe("Регрессия: генератор пароля никогда молча не пишет в title/note без явного фокуса (живой прогон 2026-08-17)", () => {
+  const field = (key: string): FieldRow => ({ key, name: "Логин", value: "", secret: false });
+
+  it("явный фокус (включая title/note) уважается как есть - осознанный выбор пользователя (R49)", () => {
+    expect(resolveGeneratorTarget({ kind: "title" }, [])).toEqual({
+      kind: "existing",
+      target: { kind: "title" },
+    });
+    expect(resolveGeneratorTarget({ kind: "note" }, [field("a")])).toEqual({
+      kind: "existing",
+      target: { kind: "note" },
+    });
+    expect(resolveGeneratorTarget({ kind: "field", key: "x" }, [])).toEqual({
+      kind: "existing",
+      target: { kind: "field", key: "x" },
+    });
+  });
+
+  it("без фокуса, но с существующим первым полем - целится в него, не в title", () => {
+    expect(resolveGeneratorTarget(null, [field("first"), field("second")])).toEqual({
+      kind: "existing",
+      target: { kind: "field", key: "first" },
+    });
+  });
+
+  it("без фокуса и без единого поля - 'createField', НИКОГДА не title (регрессия потери данных)", () => {
+    const result = resolveGeneratorTarget(null, []);
+    expect(result).toEqual({ kind: "createField" });
+    // Явно перепроверяем негативное условие форматом самого бага: результат
+    // не должен быть "existing" с title/note ни в каком виде.
+    expect(result.kind).not.toBe("existing");
   });
 });
 

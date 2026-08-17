@@ -36,8 +36,20 @@
    .lock-screen__panel), декоративна и никак не должна перехватывать клики
    или фокус. */
 .lock-screen__canvas {
+  /* `inset: 0` одного недостаточно: canvas - replaced-элемент (как img/video),
+     у него есть собственный intrinsic-размер (300x150 по умолчанию, раз нет
+     HTML-атрибутов width/height) - по CSS2.1 §10.3.7 при position:absolute он
+     использует именно intrinsic-размер, а не растягивается по containing
+     block, даже если все четыре inset выставлены в 0 (в отличие от
+     обычных block-элементов). Отсюда и была кучка узлов в углу 300x150px:
+     canvas.clientWidth/clientHeight, на которые считаются позиции узлов в
+     LockScreen.tsx, оставались 300x150 независимо от реального окна. Явные
+     width/height: 100% - обязательны для любого replaced-элемента с
+     inset-раскладкой. */
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 0;
   display: block;
   pointer-events: none;

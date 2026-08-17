@@ -19,7 +19,8 @@
         "minHeight": 600,
         "backgroundColor": "#000000",
         "decorations": false,
-        "alwaysOnTop": true
+        "alwaysOnTop": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {

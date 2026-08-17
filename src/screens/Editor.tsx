@@ -546,6 +546,8 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   useModalFocus(countWarningRef, Boolean(countWarning));
 
   const [attachmentBusy, setAttachmentBusy] = useState(false);
+  /** Над областью вложений держат файл - подсветка приёмника. */
+  const [dropActive, setDropActive] = useState(false);
   const [attachmentWarning, setAttachmentWarning] = useState<string | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
@@ -617,6 +619,49 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       setAttachmentError(ATTACH_FAILED_MESSAGE);
     } finally {
       setAttachmentBusy(false);
+    }
+  }
+
+  /**
+   * Файлы, брошенные на область вложений.
+   *
+   * Перехват перетаскивания самим Tauri выключен (`dragDropEnabled: false` в
+   * `tauri.conf.json`) - иначе события до webview не доходят вовсе, и обычный
+   * html-обработчик молчит. Взамен файл приходит объектом `File`, из которого
+   * байты берутся напрямую, без чтения по пути.
+   *
+   * Бросить можно сразу несколько: диалог такого не позволяет (`multiple:
+   * false`), а перетаскивание позволяет естественно, и запрещать это значило
+   * бы делать новый путь хуже старого.
+   */
+  async function handleDropFiles(files: FileList) {
+    setAttachmentError(null);
+    setAttachmentWarning(null);
+    setAttachmentBusy(true);
+    try {
+      let added: Attachment[] = [];
+      for (const file of Array.from(files)) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        added = [...added, attachmentFromFileBytes(bytes, file.name)];
+      }
+      if (added.length === 0) return;
+      const totalNew = added.reduce((sum, a) => sum + a.size, 0);
+      const vaultSizeAfter = store.estimateSizeBytes() + totalNew;
+      setForm((f) => ({
+        ...f,
+        attachments: added.reduce((list, a) => addAttachment(list, a), f.attachments),
+      }));
+      // Предупреждение считается по самому крупному из брошенных файлов: текст
+      // говорит про «файл», и складывать размеры в одно число значило бы
+      // назвать несуществующий файл.
+      const largest = added.reduce((max, a) => (a.size > max ? a.size : max), 0);
+      setAttachmentWarning(buildAttachmentSizeWarning(largest, vaultSizeAfter));
+    } catch (err) {
+      console.error("Editor: не удалось прочитать брошенные файлы", err);
+      setAttachmentError(ATTACH_FAILED_MESSAGE);
+    } finally {
+      setAttachmentBusy(false);
+      setDropActive(false);
     }
   }
 
@@ -993,7 +1038,28 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
           />
         </div>
 
-        <div className="editor__section">
+        <div
+          className={`editor__section${dropActive ? " editor__section--drop" : ""}`}
+          onDragOver={(e) => {
+            // Без preventDefault браузер откроет брошенный файл вместо того,
+            // чтобы отдать его обработчику.
+            if (!e.dataTransfer.types.includes("Files")) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            if (!dropActive) setDropActive(true);
+          }}
+          onDragLeave={(e) => {
+            // Уход на дочерний элемент внутри той же области - не уход:
+            // без этой проверки подсветка мигала бы при движении курсора.
+            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+            setDropActive(false);
+          }}
+          onDrop={(e) => {
+            if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+            e.preventDefault();
+            void handleDropFiles(e.dataTransfer.files);
+          }}
+        >
           <div className="editor__section-header">
             <span className="editor__label">Вложения</span>
             <button
@@ -1012,7 +1078,9 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
               того же модуля, что и сам белый список предпросмотра, - иначе они
               разойдутся при первой правке, и приложение начнёт обещать то,
               чего не делает. */}
-          <p className="editor__hint">{previewSupportHint(MAX_ATTACHMENT_SIZE_BYTES)}</p>
+          <p className="editor__hint">
+            {previewSupportHint(MAX_ATTACHMENT_SIZE_BYTES)} Файлы можно перетащить прямо сюда.
+          </p>
 
           {form.attachments.length === 0 ? (
             <p className="editor__attachments-empty">Вложений пока нет.</p>

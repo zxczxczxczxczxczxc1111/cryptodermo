@@ -387,3 +387,11 @@
   font-size: var(--fs-xs);
   line-height: var(--lh-xs);
 }
+
+/* Над областью вложений держат файл. Рамка, а не заливка: заливка на тёмном
+   фоне читается как «выделено», а нужна именно граница приёмника. */
+.editor__section--drop {
+  outline: var(--border-w) dashed var(--border-active);
+  outline-offset: var(--sp-2);
+  border-radius: var(--r-field);
+}

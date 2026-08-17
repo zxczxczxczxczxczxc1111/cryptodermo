@@ -444,3 +444,58 @@
     border-color: var(--border-active);
   }
 }
+
+/*
+ * Предпросмотр вложения.
+ *
+ * Свёрнут по умолчанию: содержимое вложения - такой же секрет, как значение
+ * поля, и разворачивать его на весь экран без спроса нельзя. Тот же принцип,
+ * что у кнопки «Показать» у секретных полей.
+ *
+ * Что именно показывается и почему только это - в шапке
+ * `src/lib/attachmentPreview.ts`. Коротко: растровые картинки и простой текст.
+ * SVG и PDF запрещены намеренно.
+ */
+.record-card__attachment + .record-card__attachment {
+  margin-top: var(--sp-2);
+}
+
+.record-card__attachment-preview {
+  margin-top: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--border);
+  background: var(--surface);
+  animation: fade-in var(--dur-fast) ease-out;
+}
+
+.record-card__attachment-image {
+  display: block;
+  max-width: 100%;
+  /* Ограничение по высоте, а не только по ширине: вертикальный скан паспорта
+     иначе выдавил бы всё остальное содержимое карточки за пределы экрана. */
+  max-height: 420px;
+  object-fit: contain;
+  margin: 0 auto;
+  border-radius: var(--r-field);
+}
+
+.record-card__attachment-text {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  /* `pre-wrap`, а не `pre`: длинные строки должны переноситься, а не уезжать
+     в горизонтальную прокрутку внутри и без того узкой карточки. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.record-card__attachment-note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}

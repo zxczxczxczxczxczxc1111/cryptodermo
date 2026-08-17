@@ -6,6 +6,16 @@ import react from "@vitejs/plugin-react";
 const host = process.env.TAURI_DEV_HOST;
 
 /**
+ * Версия приложения для показа в настройках.
+ *
+ * Берётся из package.json на этапе сборки, а не через `getVersion()` из
+ * `@tauri-apps/api/app`: тот добавил бы ещё один IPC-вызов, который вне Tauri
+ * падает и сделал бы экран настроек асинхронным ради одной строки.
+ */
+// @ts-expect-error process is a nodejs global
+const appVersion = process.env.npm_package_version ?? "0.0.0";
+
+/**
  * Абсолютный путь к файлу заглушки Tauri. Считается из `import.meta.url`, а не
  * через `path`/`fileURLToPath`, потому что в проекте нет `@types/node` и
  * добавлять его ради одной строчки конфига незачем (R31). На Windows
@@ -89,6 +99,10 @@ export default defineConfig(async ({ mode }) => ({
   // тестовых файлов пока нет - и `vitest run` не должен считать это ошибкой.
   // Когда появятся первые тесты (модуль `crypto` и т.д.), эта настройка
   // перестанет на что-либо влиять.
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
+
   test: {
     passWithNoTests: true,
   },

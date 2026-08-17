@@ -13,6 +13,7 @@ import {
 } from "../lib/vaultStore";
 import { readVault, writeVaultAtomic } from "../lib/tauriApi";
 import { PasswordGenerator } from "../components/PasswordGenerator";
+import { previewSupportHint } from "../lib/attachmentPreview";
 import "./Editor.css";
 
 /**
@@ -1006,6 +1007,12 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
               Прикрепить файл
             </button>
           </div>
+
+          {/* Подсказка о том, что будет видно без скачивания. Текст берётся из
+              того же модуля, что и сам белый список предпросмотра, - иначе они
+              разойдутся при первой правке, и приложение начнёт обещать то,
+              чего не делает. */}
+          <p className="editor__hint">{previewSupportHint(MAX_ATTACHMENT_SIZE_BYTES)}</p>
 
           {form.attachments.length === 0 ? (
             <p className="editor__attachments-empty">Вложений пока нет.</p>

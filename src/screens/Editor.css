@@ -379,3 +379,11 @@
   color: var(--danger);
   font-size: var(--fs-md);
 }
+
+/* Подсказка под кнопкой прикрепления: что будет видно без скачивания. */
+.editor__hint {
+  margin: var(--sp-2) 0 0;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}

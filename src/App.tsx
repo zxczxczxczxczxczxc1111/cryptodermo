@@ -199,7 +199,19 @@ export function importCancelTarget(preImportSnapshot: Item[] | null): Item[] {
  * геттер, такого геттера сейчас нет, а `vaultStore.ts`/`vaultFormat.ts` вне
  * зоны этого тикета (`src/lib/*`).
  */
-const FORMAT_VERSION_LABEL = "v1";
+/**
+ * Версия ПРИЛОЖЕНИЯ, показываемая в настройках.
+ *
+ * Раньше здесь была версия формата контейнера («v1»), и пользователь резонно
+ * спросил, зачем она вообще нужна: версия формата полезна ровно тогда, когда
+ * форматов несколько, а он один. Версию приложения, наоборот, называют, когда
+ * что-то сломалось.
+ *
+ * Подставляется Vite из package.json на этапе сборки (см. vite.config.ts) - не
+ * через `getVersion()` из `@tauri-apps/api/app`: тот добавил бы IPC-вызов,
+ * который вне Tauri падает и сделал бы экран настроек асинхронным ради строки.
+ */
+const APP_VERSION_LABEL = __APP_VERSION__;
 
 /** Относительное время изменения записи - тот же
  * формат вывода, что и в `List.tsx` (не экспортирован оттуда, своя маленькая
@@ -781,7 +793,7 @@ function App() {
               itemsCount: allItems.length,
               lastBackupAt,
               autoLockRemainingMs: remainingMs,
-              formatVersion: FORMAT_VERSION_LABEL,
+              appVersion: APP_VERSION_LABEL,
             }}
             importExportSlot={
               /* Импорт и экспорт переехал из отдельного пункта сайдбара сюда

@@ -5,6 +5,13 @@ import type { Attachment, Item, ItemField, ItemType, VaultStore } from "../lib/v
 import { writeVaultAtomic } from "../lib/tauriApi";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { StatusDot } from "./StatusDot";
+import {
+  previewKindFor,
+  imageDataUrl,
+  decodeTextPreview,
+  truncateForPreview,
+  previewUnavailableReason,
+} from "../lib/attachmentPreview";
 import "./RecordCard.css";
 
 /**
@@ -159,6 +166,22 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
   const [revealedHistory, setRevealedHistory] = useState<Set<string>>(() => new Set());
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
+  /**
+   * Какие вложения раскрыты. Свёрнуто по умолчанию и намеренно: содержимое
+   * вложения - такой же секрет, как значение поля, и разворачивать его на
+   * весь экран без спроса нельзя. Тот же принцип, что у кнопки «Показать» у
+   * секретных полей.
+   */
+  const [expandedAttachments, setExpandedAttachments] = useState<Set<string>>(new Set());
+
+  function toggleAttachmentPreview(id: string) {
+    setExpandedAttachments((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const deleteConfirmRef = useRef<HTMLDivElement>(null);
@@ -470,9 +493,20 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
 
               <ul className="record-card__attachments-list">
                 {item.attachments.map((att) => (
-                  <li className="record-card__attachment-row" key={att.id}>
+                  <li className="record-card__attachment" key={att.id}>
+                   <div className="record-card__attachment-row">
                     <span className="record-card__attachment-name">{att.name}</span>
                     <span className="record-card__attachment-size">{formatFileSize(att.size)}</span>
+                    {previewKindFor(att.mimeType, att.size) !== "none" && (
+                      <button
+                        type="button"
+                        className="record-card__field-btn"
+                        aria-expanded={expandedAttachments.has(att.id)}
+                        onClick={() => toggleAttachmentPreview(att.id)}
+                      >
+                        {expandedAttachments.has(att.id) ? "Свернуть" : "Показать"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="record-card__field-btn"
@@ -493,6 +527,42 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                         Удалить
                       </button>
                     )}
+                   </div>
+
+                   {/* Причина показывается на самой строке, а не общей справкой
+                       сверху: человек спрашивает «почему не открывается»,
+                       глядя на конкретный файл, и ответ должен быть там же. */}
+                   {previewUnavailableReason(att.mimeType, att.size) && (
+                     <p className="record-card__attachment-note">
+                       {previewUnavailableReason(att.mimeType, att.size)}
+                     </p>
+                   )}
+
+                   {expandedAttachments.has(att.id) && (
+                     <div className="record-card__attachment-preview">
+                       {previewKindFor(att.mimeType, att.size) === "image" ? (
+                         <img
+                           className="record-card__attachment-image"
+                           src={imageDataUrl(att.mimeType, att.data)}
+                           alt={`Предпросмотр вложения ${att.name}`}
+                         />
+                       ) : (
+                         (() => {
+                           const text = decodeTextPreview(att.data);
+                           // Отдельная ветка вместо молчаливого показа мусора:
+                           // файл с расширением .txt вполне может оказаться
+                           // двоичным, и тогда честнее сказать это словами.
+                           return text === null ? (
+                             <p className="record-card__attachment-note">
+                               Не удалось прочитать файл как текст. Скачайте его, чтобы открыть.
+                             </p>
+                           ) : (
+                             <pre className="record-card__attachment-text">{truncateForPreview(text)}</pre>
+                           );
+                         })()
+                       )}
+                     </div>
+                   )}
                   </li>
                 ))}
               </ul>

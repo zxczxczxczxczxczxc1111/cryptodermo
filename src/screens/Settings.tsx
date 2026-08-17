@@ -335,7 +335,7 @@ export interface SettingsProps {
     itemsCount: number;
     lastBackupAt: Date | null;
     autoLockRemainingMs: number;
-    formatVersion: string;
+    appVersion: string;
   };
   /**
    * Импорт и экспорт. Отдан слотом, а не перенесён внутрь этого файла: вся
@@ -787,8 +787,8 @@ export function Settings({
                 <dd>{formatRemaining(storageState.autoLockRemainingMs)}</dd>
               </div>
               <div className="settings__fact">
-                <dt>Версия формата</dt>
-                <dd>{storageState.formatVersion}</dd>
+                <dt>Версия приложения</dt>
+                <dd>{storageState.appVersion}</dd>
               </div>
             </dl>
           </section>

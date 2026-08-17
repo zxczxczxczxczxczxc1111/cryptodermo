@@ -15,10 +15,11 @@
  * соседи импортируются оттуда) - иначе Enter копировал бы в двух местах разное.
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import type { Item, VaultStore } from "../lib/vaultStore";
+import type { VaultStore } from "../lib/vaultStore";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { parseOtpauth, totpCode } from "../lib/totp";
-import { primaryField, secondaryField, totpField, MAX_RESULTS } from "../screens/QuickAccess";
+import { totpField, MAX_RESULTS } from "../screens/QuickAccess";
+import { buildQuickRows, type QuickResult } from "../lib/quickBridge";
 import { useModalFocus } from "../hooks/useModalFocus";
 import { UserIcon, KeyIcon, ClockIcon, CheckIcon } from "./icons";
 import "./QuickPalette.css";
@@ -47,7 +48,7 @@ export interface QuickPaletteProps {
 export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPaletteProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Item[]>([]);
+  const [results, setResults] = useState<QuickResult[]>([]);
   const [selected, setSelected] = useState(0);
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -84,7 +85,7 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
     setQuery("");
     setSelected(0);
     setCopied(null);
-    setResults(store.search("").slice(0, MAX_RESULTS));
+    setResults(buildQuickRows(store.search("")).slice(0, MAX_RESULTS));
     // Фокус ставится после отрисовки: до неё поля ещё нет в документе.
     const id = window.setTimeout(() => inputRef.current?.focus(), 0);
     return () => window.clearTimeout(id);
@@ -101,7 +102,7 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
   function runSearch(next: string) {
     setQuery(next);
     setSelected(0);
-    setResults(store.search(next).slice(0, MAX_RESULTS));
+    setResults(buildQuickRows(store.search(next)).slice(0, MAX_RESULTS));
   }
 
   async function copyValue(value: string, label: string) {
@@ -115,8 +116,18 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
     }
   }
 
-  async function copyTotp(item: Item) {
-    const field = totpField(item);
+  /** Значение конкретного поля записи. Поле называется явно: в записи может
+   * быть несколько паролей, и «первое подходящее» - та самая ошибка, из-за
+   * которой строки стали парами. */
+  function fieldValue(id: string, name: string | null): string | null {
+    if (!name) return null;
+    const item = store.search("").find((i) => i.id === id);
+    return item?.fields.find((f) => f.name === name)?.value ?? null;
+  }
+
+  async function copyTotp(id: string) {
+    const item = store.search("").find((i) => i.id === id);
+    const field = item ? totpField(item) : null;
     if (!field) return;
     try {
       await copyValue(await totpCode(parseOtpauth(field.value), Date.now() / 1000), "код");
@@ -153,8 +164,10 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
         onOpenItem(item.id);
         return;
       }
-      const field = e.shiftKey ? secondaryField(item) : primaryField(item);
-      if (field) void copyValue(field.value, e.shiftKey ? "логин" : "пароль");
+      const value = e.shiftKey
+        ? fieldValue(item.id, item.loginField)
+        : fieldValue(item.id, item.passwordField);
+      if (value !== null) void copyValue(value, e.shiftKey ? "логин" : "пароль");
     }
   }
 
@@ -184,47 +197,48 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
           {results.length === 0 && <li className="palette__empty">Ничего не найдено</li>}
           {results.map((item, index) => (
             <li
-              key={item.id}
+              key={`${item.id}:${item.passwordField}`}
               className={`palette__row${index === selected ? " palette__row--active" : ""}`}
               onMouseEnter={() => setSelected(index)}
             >
-              <span className="palette__row-title">{item.title || "(без названия)"}</span>
+              <span className="palette__row-text">
+                <span className="palette__row-title">{item.title || "(без названия)"}</span>
+                {item.detail && <span className="palette__row-detail">{item.detail}</span>}
+              </span>
               <span className="palette__row-actions">
-                {secondaryField(item) && (
+                {item.loginField && (
                   <button
                     type="button"
                     className="palette__btn"
                     aria-label="Скопировать логин"
                     title="Скопировать логин"
                     onClick={() => {
-                      const f = secondaryField(item);
-                      if (f) void copyValue(f.value, "логин");
+                      const v = fieldValue(item.id, item.loginField);
+                      if (v !== null) void copyValue(v, "логин");
                     }}
                   >
                     {copied === "логин" && index === selected ? <CheckIcon size={14} /> : <UserIcon size={14} />}
                   </button>
                 )}
-                {primaryField(item) && (
-                  <button
-                    type="button"
-                    className="palette__btn"
-                    aria-label="Скопировать пароль"
-                    title="Скопировать пароль"
-                    onClick={() => {
-                      const f = primaryField(item);
-                      if (f) void copyValue(f.value, "пароль");
-                    }}
-                  >
-                    {copied === "пароль" && index === selected ? <CheckIcon size={14} /> : <KeyIcon size={14} />}
-                  </button>
-                )}
-                {totpField(item) && (
+                <button
+                  type="button"
+                  className="palette__btn"
+                  aria-label="Скопировать пароль"
+                  title="Скопировать пароль"
+                  onClick={() => {
+                    const v = fieldValue(item.id, item.passwordField);
+                    if (v !== null) void copyValue(v, "пароль");
+                  }}
+                >
+                  {copied === "пароль" && index === selected ? <CheckIcon size={14} /> : <KeyIcon size={14} />}
+                </button>
+                {item.hasTotp && (
                   <button
                     type="button"
                     className="palette__btn"
                     aria-label="Скопировать код двухфакторки"
                     title="Скопировать код двухфакторки"
-                    onClick={() => void copyTotp(item)}
+                    onClick={() => void copyTotp(item.id)}
                   >
                     {copied === "код" && index === selected ? <CheckIcon size={14} /> : <ClockIcon size={14} />}
                   </button>

@@ -10,7 +10,6 @@ describe("buildQuickRows", () => {
     const rows = buildQuickRows([
       {
         id: "1",
-        type: "login",
         title: "protonmail",
         fields: [
           f("Почта 1", "a@proton.me"),
@@ -25,10 +24,26 @@ describe("buildQuickRows", () => {
     expect(rows.map((r) => r.loginField)).toEqual(["Почта 1", "Почта 2"]);
   });
 
-  it("уточняет имя поля только когда паролей несколько", () => {
-    const one = buildQuickRows([
-      { id: "1", type: "login", title: "X", fields: [f("Логин", "u"), f("Пароль", "p", true)] },
+  it("уточняет строку ЗНАЧЕНИЕМ логина, а не именем поля", () => {
+    // Имя поля бесполезно: две почты одного сервиса давали «maj · Пароль» и
+    // «maj · Пароль», по которым выбрать невозможно.
+    const rows = buildQuickRows([
+      {
+        id: "1",
+        title: "gmail",
+        fields: [
+          f("Почта", "a@gmail.com"),
+          f("Пароль", "aaa", true),
+          f("Почта", "b@gmail.com"),
+          f("Пароль", "bbb", true),
+        ],
+      },
     ]);
+    expect(rows.map((r) => r.detail)).toEqual(["a@gmail.com", "b@gmail.com"]);
+  });
+
+  it("без логина не пишет бессмысленное «Пароль» у единственной пары", () => {
+    const one = buildQuickRows([{ id: "1", title: "X", fields: [f("Пароль", "p", true)] }]);
     expect(one[0].detail).toBe("");
   });
 
@@ -36,7 +51,6 @@ describe("buildQuickRows", () => {
     const rows = buildQuickRows([
       {
         id: "1",
-        type: "login",
         title: "X",
         fields: [f("Логин A", "a"), f("Пароль A", "pa", true), f("Логин B", "b"), f("Пароль B", "pb", true)],
       },
@@ -44,29 +58,23 @@ describe("buildQuickRows", () => {
     expect(rows[1].loginField).toBe("Логин B");
   });
 
-  it("прячет заметки и ключи", () => {
-    // Копировать одним нажатием у них нечего, а показать содержимое окно не
-    // может: это строка поиска, а не просмотрщик.
+  it("показывает запись, только если в ней есть заполненный пароль", () => {
+    // Признак - наличие пароля, а НЕ тип записи: человек волен хранить пароль
+    // в записи любого типа, а запись без пароля в окне, которое умеет только
+    // копировать, бесполезна независимо от типа.
     const rows = buildQuickRows([
-      { id: "1", type: "note", title: "Заметка", fields: [f("Текст", "секрет", true)] },
-      { id: "2", type: "key", title: "Ключ", fields: [f("Ключ", "-----BEGIN", true)] },
-      { id: "3", type: "login", title: "Сайт", fields: [f("Пароль", "p", true)] },
+      { id: "1", title: "Только логин", fields: [f("Логин", "u")] },
+      { id: "2", title: "Пустой пароль", fields: [f("Пароль", "   ", true)] },
+      { id: "3", title: "Без полей", fields: [] },
+      { id: "4", title: "Заметка с паролем", fields: [f("Пароль от архива", "p", true)] },
     ]);
-    expect(rows.map((r) => r.title)).toEqual(["Сайт"]);
-  });
-
-  it("пропускает записи без единого пароля", () => {
-    const rows = buildQuickRows([
-      { id: "1", type: "login", title: "Только логин", fields: [f("Логин", "u")] },
-    ]);
-    expect(rows).toEqual([]);
+    expect(rows.map((r) => r.title)).toEqual(["Заметка с паролем"]);
   });
 
   it("не считает секрет двухфакторки паролем, но отмечает его наличие", () => {
     const rows = buildQuickRows([
       {
         id: "1",
-        type: "login",
         title: "X",
         fields: [f("Логин", "u"), f("Пароль", "p", true), f("2ФА", "otpauth://totp/X?secret=A", true)],
       },

@@ -135,3 +135,26 @@
 .palette__hint--copied {
   color: var(--text);
 }
+
+/* Название и логин в одной строке: логин сжимается и обрезается первым,
+   название по которому ищут - нет. */
+.palette__row-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.palette__row-title {
+  flex: none;
+  max-width: 55%;
+}
+
+.palette__row-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-size: var(--fs-sm);
+}

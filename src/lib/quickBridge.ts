@@ -57,6 +57,18 @@ export interface QuickResult {
   passwordField: string;
   /** Имя поля логина для этой пары, если оно есть. */
   loginField: string | null;
+  /**
+   * ЗНАЧЕНИЕ логина - им и различают строки.
+   *
+   * Имя поля оказалось бесполезным: две почты одного сервиса давали
+   * «maj · Пароль» и «maj · Пароль», по которым выбрать невозможно (замечено
+   * пользователем 17.08.2026). Логин отвечает на вопрос «который из них».
+   *
+   * Это единственное значение поля, пересекающее границу между окнами, и оно
+   * несекретное по определению: секретные поля сюда не попадают, а логин и в
+   * карточке записи показан открытым текстом.
+   */
+  loginValue: string | null;
   hasTotp: boolean;
 }
 
@@ -92,16 +104,6 @@ export const COPY_LABELS: Record<QuickCopyKind, string> = {
   totp: "код",
 };
 
-/**
- * Типы записей, которые в быстром доступе не показываются.
- *
- * Заметки и ключи копировать одним нажатием нечего: у них нет пары «логин и
- * пароль», а показать их содержимое окно всё равно не может - это строка
- * поиска, а не просмотрщик. Строка с названием, из которой ничего не следует,
- * только мешает искать нужное (решение пользователя 17.08.2026).
- */
-const HIDDEN_TYPES = new Set(["note", "key"]);
-
 /** Поле похоже на секрет двухфакторки. Своя маленькая копия проверки, чтобы
  * этот модуль не тянул за собой весь `totp.ts` - он подключается и в окне, где
  * коды не считаются. */
@@ -111,7 +113,6 @@ function isTotpValue(value: string): boolean {
 
 interface ItemLike {
   id: string;
-  type: string;
   title: string;
   fields: { name: string; value: string; secret: boolean }[];
 }
@@ -130,21 +131,34 @@ interface ItemLike {
 export function buildQuickRows(items: ItemLike[]): QuickResult[] {
   const rows: QuickResult[] = [];
   for (const item of items) {
-    if (HIDDEN_TYPES.has(item.type)) continue;
-    const secrets = item.fields.filter((f) => f.secret && !isTotpValue(f.value));
+    // Признак «показывать ли» - наличие заполненного пароля, а НЕ тип записи.
+    // Сначала я скрывал заметки и ключи по типу, но тип тут ни при чём:
+    // человек волен хранить пароль в записи любого типа, а запись без пароля
+    // в окне, которое умеет только копировать, бесполезна независимо от типа
+    // (уточнено пользователем 17.08.2026).
+    const secrets = item.fields.filter(
+      (f) => f.secret && f.value.trim() !== "" && !isTotpValue(f.value),
+    );
     if (secrets.length === 0) continue;
     const hasTotp = item.fields.some((f) => isTotpValue(f.value));
 
     for (const secret of secrets) {
       const index = item.fields.indexOf(secret);
-      const above = item.fields.slice(0, index).filter((f) => !f.secret);
-      const login = above.length > 0 ? above[above.length - 1] : item.fields.find((f) => !f.secret);
+      const above = item.fields.slice(0, index).filter((f) => !f.secret && f.value.trim() !== "");
+      const login =
+        above.length > 0
+          ? above[above.length - 1]
+          : item.fields.find((f) => !f.secret && f.value.trim() !== "");
       rows.push({
         id: item.id,
         title: item.title,
-        detail: secrets.length > 1 ? secret.name : "",
+        // Уточняем логином. Имя поля - только когда логина нет И паролей
+        // несколько: иначе в строке висела бы подпись «Пароль», из которой
+        // ничего не следует.
+        detail: login && login.value.trim() !== "" ? login.value : secrets.length > 1 ? secret.name : "",
         passwordField: secret.name,
         loginField: login ? login.name : null,
+        loginValue: login && login.value.trim() !== "" ? login.value : null,
         hasTotp,
       });
     }

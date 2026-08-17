@@ -184,8 +184,18 @@
   min-width: 0;
 }
 
+/* Логин под названием. Сжимается первым и обрезается: длинная почта не должна
+   выдавливать название, по которому и ищут. */
 .qwin__row-detail {
-  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-faint);
   font-size: var(--fs-sm);
+}
+
+.qwin__row-title {
+  flex: none;
+  max-width: 55%;
 }

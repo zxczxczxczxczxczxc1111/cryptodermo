@@ -69,7 +69,24 @@ function fixtureItems(): NewItemInput[] {
 
   return [
     login("Binance", "binance@gmail.com", ["Криптовалюта", "Финансы"]),
-    login("GitHub", "johndoe@gmail.com", ["Работа"]),
+    // Запись с двухфакторкой: без неё живой код в карточке проверить не на
+    // чем. Секрет из приложения B к RFC 6238, то есть заведомо публичный.
+    {
+      type: "login",
+      title: "GitHub",
+      tags: ["Работа"],
+      fields: [
+        { name: "Логин", value: "johndoe@gmail.com", secret: false },
+        { name: "Пароль", value: "Xk9#mQ2$vL8pR4wZ", secret: true },
+        {
+          name: "Двухфакторка",
+          value: "otpauth://totp/GitHub:johndoe@gmail.com?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=GitHub",
+          secret: true,
+        },
+        { name: "Сайт", value: "https://github.com", secret: false },
+      ],
+      note: "",
+    },
     login("Telegram", "+7 999 123 45 67", ["Личное"]),
     login("Cloudflare", "ops@example.com", ["Работа"]),
     login("Steam", "player_one", ["Личное"]),

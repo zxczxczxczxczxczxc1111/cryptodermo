@@ -7,6 +7,8 @@ import { copyWithAutoClear } from "../lib/clipboard";
 import { StatusDot } from "./StatusDot";
 import { EyeIcon, CopyIcon, CheckIcon, QrIcon, StarIcon, DuplicateIcon } from "./icons";
 import { buildQrMatrix, qrSvgPath, QrTooLongError, type QrMatrix } from "../lib/qr";
+import { looksLikeTotp } from "../lib/totp";
+import { TotpCode } from "./TotpCode";
 import {
   previewKindFor,
   imageDataUrl,
@@ -240,6 +242,14 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
    * значило бы пересчитывать код на любое изменение состояния карточки.
    */
   const [qrView, setQrView] = useState<{ fieldName: string; matrix: QrMatrix | null } | null>(null);
+  /**
+   * Текущие коды двухфакторки по имени поля.
+   *
+   * Нужны для копирования: копировать надо ШЕСТЬ ЦИФР, а не ссылку
+   * `otpauth://` из значения поля. Вставить ссылку в форму входа на сайте
+   * означает получить отказ и не понять почему.
+   */
+  const [totpCodes, setTotpCodes] = useState<Record<string, string | null>>({});
   const qrRef = useRef<HTMLDivElement>(null);
   useModalFocus(qrRef, qrView !== null);
 
@@ -410,7 +420,9 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
     try {
       setCopyError(null);
       // 30 секунд - буквально из брифа (R48), не настраивается с этого места.
-      await copyWithAutoClear(field.value);
+      // У поля двухфакторки копируется текущий код, а не ссылка otpauth://.
+      const totp = looksLikeTotp(field.value) ? totpCodes[field.name] : null;
+      await copyWithAutoClear(totp ?? field.value);
       setCopiedField(field.name);
       window.setTimeout(() => {
         setCopiedField((current) => (current === field.name ? null : current));
@@ -544,14 +556,27 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                   <span>{field.name}</span>
                 </div>
                 <div className="record-card__field-row">
-                  <span
-                    className={`record-card__field-value${
-                      field.secret ? " record-card__field-value--mono" : ""
-                    }`}
-                  >
-                    {isRevealed ? field.value : SECRET_MASK}
-                  </span>
-                  {field.secret && (
+                  {looksLikeTotp(field.value) ? (
+                    <TotpCode
+                      value={field.value}
+                      onCodeChange={(code) =>
+                        setTotpCodes((prev) =>
+                          prev[field.name] === code ? prev : { ...prev, [field.name]: code },
+                        )
+                      }
+                    />
+                  ) : (
+                    <span
+                      className={`record-card__field-value${
+                        field.secret ? " record-card__field-value--mono" : ""
+                      }`}
+                    >
+                      {isRevealed ? field.value : SECRET_MASK}
+                    </span>
+                  )}
+                  {/* У кода двухфакторки прятать нечего: он живёт тридцать
+                      секунд и бесполезен без пароля. */}
+                  {field.secret && !looksLikeTotp(field.value) && (
                     <button
                       type="button"
                       className="record-card__field-btn record-card__field-btn--icon"
@@ -591,6 +616,11 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                       значение отсюда», только приёмник не буфер обмена, а
                       телефон. Отдельной крупной кнопки не заводим, иначе
                       строка поля превращается в панель инструментов. */}
+                  {/* QR со ссылкой otpauth:// - это перенос секрета на другое
+                      устройство, а не передача кода, и здесь он был бы
+                      ловушкой: сканирующий получил бы вечный доступ вместо
+                      одноразового числа. */}
+                  {!looksLikeTotp(field.value) && (
                   <button
                     type="button"
                     className="record-card__field-btn record-card__field-btn--icon"
@@ -600,6 +630,7 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                   >
                     <QrIcon />
                   </button>
+                  )}
                 </div>
               </div>
             );

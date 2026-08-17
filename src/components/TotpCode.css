@@ -1,0 +1,45 @@
+/* Живой код двухфакторки - см. TotpCode.tsx. */
+
+.totp-code {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.totp-code__digits {
+  font-size: var(--fs-md);
+  /* Разрядка чуть шире обычной: код перенабирают руками, и слипшиеся цифры
+     здесь стоят дороже, чем где-либо ещё в интерфейсе. */
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+
+/*
+ * Кольцо обратного отсчёта. Заполняется по кругу через `conic-gradient`, а не
+ * анимацией: значение приходит из состояния раз в секунду, и анимация с ним
+ * разъезжалась бы после сворачивания окна или сна машины.
+ */
+.totp-code__timer {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--text-dim) calc(var(--totp-fraction) * 360deg),
+    var(--fill-subtle) 0
+  );
+}
+
+/* Код на исходе. Порог задан долей, а не секундами: у нестандартного периода
+   (60 секунд встречается) пять секунд это уже другая доля тревоги. */
+.totp-code__timer {
+  transition: none;
+}
+
+.totp-code--broken {
+  color: var(--warn);
+  font-size: var(--fs-sm);
+}

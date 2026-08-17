@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import type { Item, VaultStore } from "../lib/vaultStore";
+import type { Item, ItemType, VaultStore } from "../lib/vaultStore";
 import { RecordCard, TYPE_LABELS, hasStaleSecretField } from "../components/RecordCard";
 import { StatusDot } from "../components/StatusDot";
 import "./List.css";
@@ -44,6 +44,15 @@ export interface ListProps {
    * рендерятся, компонент остаётся рабочим и без этого колбэка (тот же
    * принцип опциональности, что и у `RecordCardProps.onAttachmentsChanged`). */
   onCreateNew?: () => void;
+  /**
+   * Показывать только записи этого типа. `undefined` - показывать все.
+   *
+   * Фильтр применяется ПОВЕРХ поиска, а не вместо него: сузили тип, потом
+   * ищете внутри него - обычное ожидание. Отдельный фильтр, а не подмешивание
+   * типа в поисковую строку: строка ищет по тексту, и слово «карта» в
+   * заметке не должно превращаться в выбор типа.
+   */
+  typeFilter?: ItemType;
   /**
    * Стор был изменён прямо внутри этого экрана (сейчас - только удаление
    * вложения из карточки, см. `RecordCard.onAttachmentsChanged`) - сигнал
@@ -142,7 +151,7 @@ function formatRelativeTime(iso: string, now: number): string {
   return `${years} г назад`;
 }
 
-export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged, refreshToken }: ListProps) {
+export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged, refreshToken, typeFilter }: ListProps) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -162,12 +171,38 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
   // сужает только ЛЕВУЮ колонку, а не то, какая карточка открыта.
   const full = useMemo<SearchResult>(() => safeSearch(store, ""), [store, refreshToken, localVersion]);
 
-  const filtered = useMemo<SearchResult>(() => {
+  const searched = useMemo<SearchResult>(() => {
     if (query.trim() === "") return full;
     return safeSearch(store, query);
   }, [store, query, refreshToken, full]);
 
+  const filtered = useMemo<SearchResult>(() => {
+    if (!typeFilter) return searched;
+    return { items: searched.items.filter((i) => i.type === typeFilter), error: searched.error };
+  }, [searched, typeFilter]);
+
   const items = filtered.items;
+
+  /*
+   * Автовыбор первой записи.
+   *
+   * После удаления колонки «Недавние» правая половина экрана при пустом
+   * выборе оставалась дырой на пол-окна с одной строчкой посередине. Открытая
+   * первая запись убирает эту дыру и заодно отвечает на вопрос «а что вообще
+   * внутри», не требуя ни одного щелчка.
+   *
+   * Условия важны: выбираем только если НИЧЕГО не выбрано (не перебиваем
+   * выбор пользователя) и только если выбранное выпало из текущей выборки -
+   * иначе смена фильтра оставляла бы открытой запись чужого типа.
+   */
+  useEffect(() => {
+    if (items.length === 0) {
+      if (selectedId !== null) setSelectedId(null);
+      return;
+    }
+    const stillVisible = selectedId !== null && items.some((i) => i.id === selectedId);
+    if (!stillVisible) setSelectedId(items[0].id);
+  }, [items, selectedId]);
   const error = filtered.error ?? full.error;
   const selectedItem = selectedId ? (full.items.find((i) => i.id === selectedId) ?? null) : null;
 
@@ -176,7 +211,7 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
   useEffect(() => {
     setScrollTop(0);
     if (viewportRef.current) viewportRef.current.scrollTop = 0;
-  }, [query]);
+  }, [query, typeFilter]);
 
   useEffect(() => {
     const el = viewportRef.current;

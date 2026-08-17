@@ -4,11 +4,10 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { exeDir } from "./lib/tauriApi";
 import { readSettings, DEFAULT_AUTO_LOCK_TIMEOUT_MS } from "./lib/settingsConfig";
-import { VaultStore, ItemCountDecreasedError, type Item } from "./lib/vaultStore";
+import { VaultStore, ItemCountDecreasedError, type Item, type ItemType } from "./lib/vaultStore";
 import { useAutoLock } from "./hooks/useAutoLock";
 import { AppShell, type SidebarSection } from "./components/AppShell";
 import { TYPE_LABELS } from "./components/RecordCard";
-import type { RecentListItem } from "./components/RecentList";
 import { ImportExportPanel } from "./components/ImportExportPanel";
 import { LockScreen } from "./screens/LockScreen";
 import { List } from "./screens/List";
@@ -50,11 +49,13 @@ import "./App.css";
  * `List.tsx` для своей карточки).
  */
 export type Screen =
-  | { kind: "list" }
+  | { kind: "list"; typeFilter?: ItemType }
   | { kind: "editor"; itemId: string | null }
   | { kind: "settings" };
 
 const SIDEBAR_LIST_ID = "list";
+/** Префикс id пунктов-фильтров по типу записи: `type:login` и т.п. */
+const SIDEBAR_TYPE_PREFIX = "type:";
 const SIDEBAR_SETTINGS_ID = "settings";
 
 /**
@@ -65,6 +66,9 @@ const SIDEBAR_SETTINGS_ID = "settings";
  */
 export function screenForSidebarId(id: string): Screen {
   if (id === SIDEBAR_SETTINGS_ID) return { kind: "settings" };
+  if (id.startsWith(SIDEBAR_TYPE_PREFIX)) {
+    return { kind: "list", typeFilter: id.slice(SIDEBAR_TYPE_PREFIX.length) as ItemType };
+  }
   return { kind: "list" };
 }
 
@@ -77,6 +81,9 @@ export function screenForSidebarId(id: string): Screen {
  */
 export function sidebarIdForScreen(screen: Screen): string {
   if (screen.kind === "editor") return SIDEBAR_LIST_ID;
+  if (screen.kind === "list" && screen.typeFilter) {
+    return `${SIDEBAR_TYPE_PREFIX}${screen.typeFilter}`;
+  }
   return screen.kind;
 }
 
@@ -180,15 +187,7 @@ export function importCancelTarget(preImportSnapshot: Item[] | null): Item[] {
  */
 const FORMAT_VERSION_LABEL = "v1";
 
-/** Сколько последних изменённых записей показывать в колонке "Недавние".
- * `RecentList.tsx` не виртуализирован (в отличие от `List.tsx`) - без
- * ограничения база на 5000+ записей отрендерила бы туда тысячи скрытых
- * градиентной маской, но всё равно смонтированных DOM-узлов (R96.1
- * заботится об этом для основного списка, здесь тот же принцип craft-решением
- * этого тикета). */
-const RECENT_ITEMS_LIMIT = 20;
-
-/** Относительное время изменения записи для колонки "Недавние" - тот же
+/** Относительное время изменения записи - тот же
  * формат вывода, что и в `List.tsx` (не экспортирован оттуда, своя маленькая
  * копия по тому же принципу, что и `joinPath` выше). Экспортирована и
  * протестирована (App.test.ts, по кейсу на ветку) - тот же приём, что уже
@@ -209,17 +208,6 @@ export function formatRelativeTime(iso: string, now: number): string {
   return `${years} г назад`;
 }
 
-function itemToRecentListItem(item: Item, now: number): RecentListItem {
-  return {
-    id: item.id,
-    title: item.title || "(без названия)",
-    typeLabel: TYPE_LABELS[item.type],
-    relativeTime: formatRelativeTime(item.updatedAt, now),
-    // hasUnsavedChanges сознательно не выставляется: у VaultStore есть только
-    // общий isDirty() (весь стор), не флаг на конкретную запись - показать
-    // точку было бы гадать, а не знать (CLAUDE.md §1 "не изобретай").
-  };
-}
 
 /**
  * Невидимый контроллер автоблокировки - обособлен от видимого дерева, чтобы
@@ -429,19 +417,14 @@ function App() {
   }, []);
 
   // Единственное место, где считается store.search("") для этого файла -
-  // источник и для счётчика записей в сайдбаре, и для колонки "Недавние", и
-  // для поиска записи по id при открытии редактора (см. editorItem ниже).
+  // источник и для счётчиков в сайдбаре, и для поиска записи по id при
+  // открытии редактора (см. editorItem ниже).
   // Пересчитывается только когда store сменился (новая сессия) или dataVersion
   // выросла (известное этому файлу изменение) - НЕ на каждый тик
   // remainingMs, иначе полное сканирование+structuredClone гонялось бы раз в
   // секунду даже на большой базе (R96.1 заботится об этом для List.tsx,
   // здесь тот же принцип).
   const allItems = useMemo(() => (store ? store.search("") : []), [store, dataVersion]);
-
-  const recentItems = useMemo(() => {
-    const now = Date.now();
-    return allItems.slice(0, RECENT_ITEMS_LIMIT).map((item) => itemToRecentListItem(item, now));
-  }, [allItems]);
 
   /** Что-то изменило store в обход обычного пути "открыть экран - увидеть
    * актуальные данные" (сейчас единственный источник - List.onStoreChanged,
@@ -661,14 +644,54 @@ function App() {
     );
   }
 
+  /*
+   * Типы записей выводятся в сайдбар как фильтры (17.08.2026). Отдельной
+   * сущности «категория» для этого заводить не понадобилось: выбор типа уже
+   * существует в редакторе, и это ровно то, что нужно было вывести слева.
+   * Формат базы не затронут.
+   *
+   * Счётчики считаются по той же коллекции, что и всё остальное на экране,
+   * поэтому не могут разойтись со списком.
+   */
+  const countByType = allItems.reduce<Record<string, number>>((acc, item) => {
+    acc[item.type] = (acc[item.type] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const activeTypeFilter = screen.kind === "list" ? screen.typeFilter : undefined;
+
   const sidebarSections: SidebarSection[] = [
     {
-      heading: "Хранилище",
       items: [
-        { id: SIDEBAR_LIST_ID, label: "Записи", count: allItems.length },
-        // Шестерёнка прижата к низу полосы: это служебное действие, а не
-        // раздел с данными, и стоять в одном ряду с «Записями» ей незачем.
-        { id: SIDEBAR_SETTINGS_ID, label: "Настройки", pinnedToBottom: true },
+        { id: SIDEBAR_LIST_ID, label: "Все записи", count: allItems.length, icon: "all" },
+      ],
+    },
+    {
+      /*
+       * Заголовок секции «Типы» убран: список «Пароль, Заметка, Карта, Ключ»
+       * и так читается как типы, а подпись над ним лишь добавляла строку.
+       *
+       * Типы, которых в базе нет, не показываются: пустой пункт со счётчиком 0
+       * не даёт ничего, кроме лишней строки, по которой нечего открыть.
+       *
+       * Исключение - тип, выбранный прямо сейчас. Без него удаление последней
+       * записи выбранного типа убирало бы пункт вместе с подсветкой, и человек
+       * оставался бы в отфильтрованном пустом списке, не понимая, где он и как
+       * вернуться.
+       */
+      items: (Object.keys(TYPE_LABELS) as ItemType[])
+        .filter((type) => (countByType[type] ?? 0) > 0 || activeTypeFilter === type)
+        .map((type) => ({
+          id: `${SIDEBAR_TYPE_PREFIX}${type}`,
+          label: TYPE_LABELS[type],
+          count: countByType[type] ?? 0,
+          icon: type,
+        })),
+    },
+    {
+      items: [
+        // Шестерёнка прижата к низу: служебное действие, а не раздел с данными.
+        { id: SIDEBAR_SETTINGS_ID, label: "Настройки", pinnedToBottom: true, icon: "settings" },
       ],
     },
   ];
@@ -689,15 +712,14 @@ function App() {
       />
       <AppShell
         sidebarSections={sidebarSections}
-        showRecent={screen.kind !== "settings"}
         activeSidebarItemId={sidebarIdForScreen(screen)}
         onSidebarItemSelect={(id) => void navigateTo(screenForSidebarId(id))}
-        recentListProps={{ items: recentItems, onSelect: (id) => void navigateTo({ kind: "editor", itemId: id }) }}
       >
         {screen.kind === "list" && (
           <List
             store={store}
             vaultPath={vaultPath}
+            typeFilter={screen.typeFilter}
             onOpenItem={(id) => void navigateTo({ kind: "editor", itemId: id })}
             onCreateNew={() => void navigateTo({ kind: "editor", itemId: null })}
             onStoreChanged={bumpDataVersion}

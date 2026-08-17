@@ -3,6 +3,9 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { TitleBar } from "./components/TitleBar";
 import { QuickAccess } from "./screens/QuickAccess";
+import { QuickWindow } from "./screens/QuickWindow";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { QUICK_WINDOW_LABEL } from "./lib/quickBridge";
 import { quickMode } from "./lib/tauriApi";
 
 /*
@@ -23,10 +26,22 @@ import { quickMode } from "./lib/tauriApi";
  */
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 
+/*
+ * Три входа, а не два.
+ *
+ * `QuickWindow` - маленькое окно, созданное уже открытым приложением по
+ * глобальному сочетанию: база расшифрована в основном окне, PIN не нужен.
+ * `QuickAccess` - то же окно, но поднятое ярлыком с `--quick`, когда
+ * приложения нет в памяти: там PIN обязателен. Различаются по метке окна.
+ */
+const isQuickWindow = getCurrentWindow().label === QUICK_WINDOW_LABEL;
+
 void quickMode().then((quick) => {
   root.render(
     <React.StrictMode>
-      {quick ? (
+      {isQuickWindow ? (
+        <QuickWindow />
+      ) : quick ? (
         <QuickAccess />
       ) : (
         <>

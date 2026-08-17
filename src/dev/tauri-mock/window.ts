@@ -16,6 +16,9 @@
 type UnlistenFn = () => void;
 
 class MockWindow {
+  /** Метка окна. В браузере всегда основное - второго окна там нет. */
+  readonly label = "main";
+
   async destroy(): Promise<void> {
     console.info("mock: window.destroy() - в браузере окно не закрывается");
   }

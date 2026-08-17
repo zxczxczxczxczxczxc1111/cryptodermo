@@ -154,3 +154,44 @@ export function ExternalIcon({ size }: { size?: number }) {
     </Glyph>
   );
 }
+
+/*
+ * Три знака для строки быстрого поиска: что именно копируется.
+ *
+ * Раньше там были вперемешку подписи «2FA», «Логин» и иконка копирования -
+ * человек читал два разных языка в одной строке (замечено пользователем
+ * 17.08.2026). Иконки обозначают СОДЕРЖИМОЕ, а не действие: три одинаковых
+ * значка копирования не отличались бы друг от друга вовсе.
+ */
+
+/** Человек - логин. */
+export function UserIcon({ size }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5 20a7 7 0 0 1 14 0" />
+    </Glyph>
+  );
+}
+
+/** Ключ - пароль. */
+export function KeyIcon({ size }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <circle cx="8" cy="14" r="4" />
+      <path d="M11 11l9-9" />
+      <path d="M17 5l2.5 2.5" />
+      <path d="M14.5 7.5L17 10" />
+    </Glyph>
+  );
+}
+
+/** Часы - код двухфакторки: он живёт тридцать секунд, и время тут суть. */
+export function ClockIcon({ size }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7v5.5l3.5 2" />
+    </Glyph>
+  );
+}

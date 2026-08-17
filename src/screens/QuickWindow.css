@@ -1,0 +1,191 @@
+/*
+ * Маленькое окно быстрого доступа - см. QuickWindow.tsx.
+ *
+ * Безрамочное, поэтому фон, границу и скругление рисует сама страница.
+ * Появление плавное: окно уже показано системой, но содержимое проступает,
+ * а не возникает рывком.
+ */
+
+.qwin {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  height: 100vh;
+  padding: var(--sp-3);
+  box-sizing: border-box;
+  background: var(--surface-raised);
+  border: var(--border-w) solid var(--border-strong);
+  border-radius: var(--r-card);
+  color: var(--text);
+  font-family: var(--font-ui);
+  overflow: hidden;
+  animation: qwin-appear var(--dur) ease-out;
+}
+
+/* Лёгкий подъём и проявление. Смещение маленькое: окно и так появляется в
+   центре экрана, большой сдвиг читался бы как прыжок. */
+@keyframes qwin-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qwin {
+    animation: none;
+  }
+}
+
+.qwin__drag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 36px;
+  height: 24px;
+}
+
+.qwin__close {
+  position: absolute;
+  top: var(--sp-1);
+  right: var(--sp-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-chip);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.qwin__close:hover {
+  background: var(--danger);
+  color: var(--bg);
+}
+
+.qwin__search {
+  flex: none;
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-lg);
+}
+
+.qwin__search:focus-visible {
+  outline: none;
+  border-color: var(--border-active);
+}
+
+.qwin__results {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.qwin__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+}
+
+.qwin__row--active {
+  background: var(--surface-hover);
+}
+
+.qwin__row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+}
+
+.qwin__row-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  opacity: 0;
+}
+
+.qwin__row--active .qwin__row-actions {
+  opacity: 1;
+}
+
+/* Все кнопки одного размера: они обозначают, что копируется, и разной ширины
+   быть не должны. */
+.qwin__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-chip);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.qwin__btn:hover {
+  background: var(--surface-selected);
+  color: var(--text-strong);
+}
+
+.qwin__empty {
+  padding: var(--sp-3);
+  color: var(--text-faint);
+  font-size: var(--fs-md);
+}
+
+.qwin__hint {
+  flex: none;
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.qwin__hint--copied {
+  color: var(--text);
+}
+
+.qwin__hint--error {
+  color: var(--danger);
+}
+
+/* Название и уточнение в одну колонку: уточнение мельче и тусклее, оно
+   отвечает на вопрос «какой из двух», а не «что это». */
+.qwin__row-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.qwin__row-detail {
+  flex: none;
+  color: var(--text-faint);
+  font-size: var(--fs-sm);
+}

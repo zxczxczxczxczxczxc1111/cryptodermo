@@ -20,7 +20,7 @@ import { copyWithAutoClear } from "../lib/clipboard";
 import { parseOtpauth, totpCode } from "../lib/totp";
 import { primaryField, secondaryField, totpField, MAX_RESULTS } from "../screens/QuickAccess";
 import { useModalFocus } from "../hooks/useModalFocus";
-import { CopyIcon, CheckIcon } from "./icons";
+import { UserIcon, KeyIcon, ClockIcon, CheckIcon } from "./icons";
 import "./QuickPalette.css";
 
 /** Сколько держится подтверждение копирования. */
@@ -190,27 +190,24 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
             >
               <span className="palette__row-title">{item.title || "(без названия)"}</span>
               <span className="palette__row-actions">
-                {totpField(item) && (
-                  <button type="button" className="palette__btn" onClick={() => void copyTotp(item)}>
-                    2FA
-                  </button>
-                )}
                 {secondaryField(item) && (
                   <button
                     type="button"
                     className="palette__btn"
+                    aria-label="Скопировать логин"
+                    title="Скопировать логин"
                     onClick={() => {
                       const f = secondaryField(item);
                       if (f) void copyValue(f.value, "логин");
                     }}
                   >
-                    Логин
+                    {copied === "логин" && index === selected ? <CheckIcon size={14} /> : <UserIcon size={14} />}
                   </button>
                 )}
                 {primaryField(item) && (
                   <button
                     type="button"
-                    className="palette__btn palette__btn--icon"
+                    className="palette__btn"
                     aria-label="Скопировать пароль"
                     title="Скопировать пароль"
                     onClick={() => {
@@ -218,11 +215,18 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
                       if (f) void copyValue(f.value, "пароль");
                     }}
                   >
-                    {copied === "пароль" && index === selected ? (
-                      <CheckIcon size={14} />
-                    ) : (
-                      <CopyIcon size={14} />
-                    )}
+                    {copied === "пароль" && index === selected ? <CheckIcon size={14} /> : <KeyIcon size={14} />}
+                  </button>
+                )}
+                {totpField(item) && (
+                  <button
+                    type="button"
+                    className="palette__btn"
+                    aria-label="Скопировать код двухфакторки"
+                    title="Скопировать код двухфакторки"
+                    onClick={() => void copyTotp(item)}
+                  >
+                    {copied === "код" && index === selected ? <CheckIcon size={14} /> : <ClockIcon size={14} />}
                   </button>
                 )}
               </span>

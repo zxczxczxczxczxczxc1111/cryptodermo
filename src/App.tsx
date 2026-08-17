@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { QuickPalette } from "./components/QuickPalette";
 import { useGlobalHotkey, DEFAULT_HOTKEY } from "./hooks/useGlobalHotkey";
+import { useQuickWindowServer } from "./hooks/useQuickWindowServer";
+import { openQuickWindow } from "./lib/openQuickWindow";
 import { useModalFocus } from "./hooks/useModalFocus";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -307,10 +309,6 @@ function App() {
    * видеть актуальное значение, а не то, что было на момент подписки.
    */
   const closeToTrayRef = useRef(false);
-  /** Счётчик открытия палитры: сочетание не хранит состояние окна, а просит
-   * его открыть, и повторное нажатие должно срабатывать снова. */
-  const [paletteSignal, setPaletteSignal] = useState(0);
-
   const [lastBackupAt, setLastBackupAt] = useState<Date | null>(null);
   const [importCountWarning, setImportCountWarning] = useState<CountDecreaseWarning | null>(null);
   const importCountWarningRef = useRef<HTMLDivElement>(null);
@@ -374,22 +372,31 @@ function App() {
     };
   }, [store, vaultPath, dataVersion]);
 
+  // Основное окно отвечает маленькому на запросы поиска и копирования.
+  useQuickWindowServer(store);
+
   /**
-   * Сочетание поднимает окно и открывает быстрый поиск. Не отдельное маленькое
-   * окно: приложение уже открыто, база расшифрована, и просить PIN второй раз
-   * значило бы делать хуже, чем есть.
+   * Сочетание поднимает МАЛЕНЬКОЕ окно, а не основное: вытаскивать на весь
+   * экран целую программу ради одной строки поиска - ровно то, чего человек
+   * избегает, нажимая клавиши.
+   *
+   * Когда база заблокирована, маленькому окну нечего показывать (данные живут
+   * в основном), поэтому там поднимается обычное окно с вводом PIN.
    */
-  useGlobalHotkey(hotkeyEnabled && store !== null, hotkey, () => {
+  useGlobalHotkey(hotkeyEnabled, hotkey, () => {
     void (async () => {
-      try {
-        const win = getCurrentWindow();
-        await win.unminimize();
-        await win.show();
-        await win.setFocus();
-      } catch (err) {
-        console.error("App: не удалось поднять окно по сочетанию", err);
+      if (!store) {
+        try {
+          const win = getCurrentWindow();
+          await win.show();
+          await win.unminimize();
+          await win.setFocus();
+        } catch (err) {
+          console.error("App: не удалось поднять окно по сочетанию", err);
+        }
+        return;
       }
-      setPaletteSignal((n) => n + 1);
+      await openQuickWindow();
     })();
   });
 
@@ -820,7 +827,6 @@ function App() {
           это не часть раскладки, а слой над ней. */}
       <QuickPalette
         store={store}
-        openSignal={paletteSignal}
         onOpenItem={(id) => void navigateTo({ kind: "editor", itemId: id })}
       />
       <AutoLockController

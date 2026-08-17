@@ -7,6 +7,7 @@ import {
   secondsRemaining,
   looksLikeTotp,
   formatCodeForDisplay,
+  normalizeTotpInput,
   TotpParseError,
   type TotpParams,
 } from "./totp";
@@ -130,5 +131,33 @@ describe("formatCodeForDisplay", () => {
   it("делит код пополам - так его легче перенабрать руками", () => {
     expect(formatCodeForDisplay("123456")).toBe("123 456");
     expect(formatCodeForDisplay("12345678")).toBe("1234 5678");
+  });
+});
+
+describe("normalizeTotpInput", () => {
+  it("принимает готовую ссылку как есть", () => {
+    const uri = "otpauth://totp/X?secret=MZXW6YTBOI";
+    expect(normalizeTotpInput(uri, "GitHub")).toBe(uri);
+  });
+
+  it("собирает ссылку из голого секрета, как его печатают сайты", () => {
+    // Одни сайты дают ссылку целиком, другие только строку вроде
+    // «JBSW Y3DP EHPK 3PXP». Требовать от человека знать разницу - лишний
+    // повод ошибиться там, где ошибка выглядит как «показывает не те цифры».
+    const result = normalizeTotpInput("JBSW Y3DP EHPK 3PXP", "GitHub");
+    expect(result).toBe("otpauth://totp/GitHub?secret=JBSWY3DPEHPK3PXP");
+  });
+
+  it("не принимает обычные слова за секрет", () => {
+    // Без нижней границы длины под определение base32 попало бы любое слово
+    // из букв A-Z.
+    expect(normalizeTotpInput("PASSWORD", "X")).toBeNull();
+    expect(normalizeTotpInput("Xk9#mQ2$vL8pR4wZ", "X")).toBeNull();
+    expect(normalizeTotpInput("", "X")).toBeNull();
+  });
+
+  it("не принимает битую ссылку", () => {
+    expect(normalizeTotpInput("otpauth://totp/X?issuer=Y", "X")).toBeNull();
+    expect(normalizeTotpInput("otpauth://hotp/X?secret=MZXW6YTBOI", "X")).toBeNull();
   });
 });

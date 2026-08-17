@@ -199,3 +199,58 @@ export function formatCodeForDisplay(code: string): string {
   const half = Math.ceil(code.length / 2);
   return `${code.slice(0, half)} ${code.slice(half)}`;
 }
+
+/** Имя поля, которое заводит кнопка «Код двухфакторки». */
+export const TOTP_FIELD_NAME = "Двухфакторка";
+
+/**
+ * Похоже ли на голый секрет base32, каким его печатают сайты рядом с QR.
+ *
+ * Порог в 16 символов не случаен: секреты короче встречаются только в
+ * учебных примерах, а без нижней границы под определение попало бы любое
+ * слово из букв A-Z, вроде «PASSWORD».
+ */
+export function looksLikeBase32Secret(value: string): boolean {
+  const clean = value.replace(/[\s-]/g, "").replace(/=+$/, "").toUpperCase();
+  return clean.length >= 16 && /^[A-Z2-7]+$/.test(clean);
+}
+
+/** Собрать ссылку из голого секрета - в базе хранится всегда ссылка, чтобы у
+ * значения был один-единственный формат. */
+export function buildOtpauthUri(secret: string, label: string): string {
+  const clean = secret.replace(/[\s-]/g, "").replace(/=+$/, "").toUpperCase();
+  const name = encodeURIComponent(label.trim() || "cryptodermo");
+  return `${OTPAUTH_PREFIX}totp/${name}?secret=${clean}`;
+}
+
+/**
+ * Привести введённое человеком к ссылке `otpauth://`.
+ *
+ * Принимает и то, и другое, потому что сайты дают то одно, то другое: одни
+ * показывают QR и ссылку целиком, другие только строку вроде
+ * «JBSW Y3DP EHPK 3PXP». Требовать от человека знать разницу - лишний повод
+ * ошибиться там, где ошибка выглядит как «приложение показывает не те цифры».
+ *
+ * `null` означает «не понял»: вызывающий код должен сказать об этом вслух, а
+ * не сохранить мусор, который потом молча не сойдётся с сайтом.
+ */
+export function normalizeTotpInput(raw: string, label: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  if (looksLikeTotp(trimmed)) {
+    try {
+      parseOtpauth(trimmed);
+      return trimmed;
+    } catch {
+      return null;
+    }
+  }
+  if (!looksLikeBase32Secret(trimmed)) return null;
+  const uri = buildOtpauthUri(trimmed, label);
+  try {
+    parseOtpauth(uri);
+    return uri;
+  } catch {
+    return null;
+  }
+}

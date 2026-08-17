@@ -314,9 +314,16 @@
 
 .editor__field-row {
   display: grid;
+  /* Четыре колонки в первой строке, подсказка двухфакторки - во второй на всю
+     ширину: она объясняет, что вставлять, и обрезать её колонкой нельзя. */
   grid-template-columns: 1fr 2fr auto auto;
   align-items: center;
   gap: var(--sp-2);
+}
+
+.editor__field-row .editor__totp-hint {
+  grid-column: 1 / -1;
+  margin-top: calc(var(--sp-1) * -1);
 }
 
 .editor__field-secret {
@@ -394,4 +401,23 @@
   outline: var(--border-w) dashed var(--border-active);
   outline-offset: var(--sp-2);
   border-radius: var(--r-field);
+}
+
+/* Две кнопки добавления поля в один ряд. */
+.editor__field-buttons {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+/* Подсказка под полем двухфакторки - см. также .editor__field-row, где она
+   растягивается на все колонки сетки. */
+.editor__totp-hint {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.editor__totp-hint--bad {
+  color: var(--warn);
 }

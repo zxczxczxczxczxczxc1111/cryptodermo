@@ -11,6 +11,7 @@ import {
   type ItemType,
   type VaultStore,
 } from "../lib/vaultStore";
+import { TOTP_FIELD_NAME, looksLikeTotp, normalizeTotpInput } from "../lib/totp";
 import { readVault, writeVaultAtomic } from "../lib/tauriApi";
 import { PasswordGenerator } from "../components/PasswordGenerator";
 import { previewSupportHint } from "../lib/attachmentPreview";
@@ -388,8 +389,32 @@ export function emptyFormState(defaultType: ItemType = "login"): EditorFormState
   return { type: defaultType, title: "", tags: [], fields: defaultFieldsFor(defaultType), note: "", attachments: [] };
 }
 
-export function addFieldRow(fields: FieldRow[]): FieldRow[] {
-  return [...fields, { key: makeFieldKey(), name: "", value: "", secret: false }];
+export function addFieldRow(
+  fields: FieldRow[],
+  preset?: { name?: string; secret?: boolean },
+): FieldRow[] {
+  return [
+    ...fields,
+    {
+      key: makeFieldKey(),
+      name: preset?.name ?? "",
+      value: "",
+      secret: preset?.secret ?? false,
+    },
+  ];
+}
+
+/** Строка полей, заведённая под код двухфакторки. Определяется и по имени (её
+ * создала кнопка), и по уже вставленному значению - иначе поле, переименованное
+ * человеком, теряло бы подсказку и нормализацию. */
+export function isTotpRow(row: { name: string; value: string }): boolean {
+  return row.name.trim() === TOTP_FIELD_NAME || looksLikeTotp(row.value);
+}
+
+/** Что показать под полем двухфакторки: пусто, принято или не разобрали. */
+export function totpRowState(row: { name: string; value: string }): "empty" | "ok" | "bad" {
+  if (row.value.trim() === "") return "empty";
+  return normalizeTotpInput(row.value, "x") ? "ok" : "bad";
 }
 
 export function removeFieldRow(fields: FieldRow[], key: string): FieldRow[] {
@@ -989,6 +1014,17 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
                     lastFocusTargetRef.current = { kind: "field", key: row.key };
                   }}
                   onChange={(e) => updateField(row.key, { value: e.currentTarget.value })}
+                  onBlur={() => {
+                    // Голый секрет превращается в ссылку, чтобы в базе у
+                    // значения был один-единственный формат. Момент выбран по
+                    // потере фокуса, а не по каждому нажатию: иначе строка
+                    // переписывалась бы прямо под пальцами.
+                    if (!isTotpRow(row)) return;
+                    const normalized = normalizeTotpInput(row.value, form.title);
+                    if (normalized && normalized !== row.value) {
+                      updateField(row.key, { value: normalized });
+                    }
+                  }}
                 />
                 <label className="editor__field-secret">
                   <input
@@ -1006,17 +1042,46 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
                 >
                   ×
                 </button>
+                {isTotpRow(row) && (
+                  <p className={`editor__totp-hint${totpRowState(row) === "bad" ? " editor__totp-hint--bad" : ""}`}>
+                    {totpRowState(row) === "empty"
+                      ? "Вставьте ключ, который сайт показывает рядом с QR-кодом при включении двухфакторки: либо строку вроде «JBSW Y3DP EHPK 3PXP», либо ссылку otpauth://. Тот же ключ можно добавить и в приложение на телефоне - они не мешают друг другу."
+                      : totpRowState(row) === "ok"
+                        ? "Ключ принят. В карточке записи будет живой код."
+                        : "Не похоже на ключ двухфакторки. Нужна строка из букв и цифр 2-7 (обычно 16-32 символа) или ссылка otpauth://."}
+                  </p>
+                )}
               </div>
             ))}
           </div>
 
-          <button
-            type="button"
-            className="editor__add-field-btn"
-            onClick={() => setForm((f) => ({ ...f, fields: addFieldRow(f.fields) }))}
-          >
-            Добавить поле
-          </button>
+          <div className="editor__field-buttons">
+            <button
+              type="button"
+              className="editor__add-field-btn"
+              onClick={() => setForm((f) => ({ ...f, fields: addFieldRow(f.fields) }))}
+            >
+              Добавить поле
+            </button>
+            {/*
+              Отдельная кнопка для двухфакторки. Без неё завести код можно было
+              только догадавшись создать поле и вставить туда ссылку
+              `otpauth://` - механика работала, а входа в неё не было
+              (замечено пользователем 17.08.2026).
+            */}
+            <button
+              type="button"
+              className="editor__add-field-btn"
+              onClick={() =>
+                setForm((f) => ({
+                  ...f,
+                  fields: addFieldRow(f.fields, { name: TOTP_FIELD_NAME, secret: true }),
+                }))
+              }
+            >
+              Код двухфакторки
+            </button>
+          </div>
         </div>
 
         <div className="editor__section">

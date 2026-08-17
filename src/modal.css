@@ -1,0 +1,143 @@
+/*
+ * Модальные окна - единственное место в проекте, где они описаны.
+ *
+ * До 17.08.2026 эти правила жили четырьмя копиями: в `App.css`, `Editor.css`,
+ * `RecordCard.css` и `ImportExportPanel.css`. Инвентаризация показала, что 35
+ * из 36 правил совпадали ПОСИМВОЛЬНО, то есть копии ещё не успели разойтись, и
+ * сведение получилось механическим, а не выбором «какая из четырёх версий
+ * правильная». Пользователь согласовал отмену прежнего решения проекта о
+ * четырёх копиях (`App.css:98-103`) отдельно.
+ *
+ * Селекторы перечислены через запятую, а не заменены одним общим классом:
+ * так не пришлось трогать разметку шести мест вызова и ломать тесты, которые
+ * ищут элементы по именам классов.
+ *
+ * Файл подключается один раз в `App.tsx`. Расхождения между модалками (какая
+ * кнопка главная, а какая опасная) описаны здесь же, внизу, чтобы не
+ * разъехались снова.
+ */
+
+.app-modal-overlay,
+.editor__modal-overlay,
+.record-card__modal-overlay,
+.import-export-panel__modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-6);
+  background: var(--scrim);
+  /* Прокрутка колесом над затемнением не должна прокручивать список под ним
+     (рекомендация Web Interface Guidelines). */
+  overscroll-behavior: contain;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.app-modal,
+.editor__modal,
+.record-card__modal,
+.import-export-panel__modal {
+  width: min(420px, 90vw);
+  padding: var(--sp-6);
+  border-radius: var(--r-card);
+  border: var(--border-w) solid var(--border-strong);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+.app-modal h2,
+.editor__modal h2,
+.record-card__modal h2,
+.import-export-panel__modal h2 {
+  margin: 0 0 var(--sp-3);
+  color: var(--text-strong);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+
+.app-modal p,
+.editor__modal p,
+.record-card__modal p,
+.import-export-panel__modal p {
+  margin: 0 0 var(--sp-4);
+  color: var(--text-dim);
+  font-size: var(--fs-md);
+}
+
+.app-modal__actions,
+.editor__modal-actions,
+.record-card__modal-actions,
+.import-export-panel__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.app-modal__actions button,
+.editor__modal-actions button,
+.record-card__modal-actions button,
+.import-export-panel__modal-actions button {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--border);
+  background: var(--btn-bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.app-modal__actions button:hover:not(:disabled),
+.editor__modal-actions button:hover:not(:disabled),
+.record-card__modal-actions button:hover:not(:disabled),
+.import-export-panel__modal-actions button:hover:not(:disabled) {
+  background: var(--btn-bg-hover);
+}
+
+/* --- Расхождения. Единственное, чем модалки отличаются друг от друга. --- */
+
+/*
+ * Главное действие: подтверждающая кнопка стоит последней и безобидна -
+ * «Всё равно сохранить», «Сохранить».
+ */
+.app-modal__actions button:last-child,
+.editor__modal-actions button:last-child {
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  font-weight: var(--fw-semibold);
+}
+
+.app-modal__actions button:last-child:hover:not(:disabled),
+.editor__modal-actions button:last-child:hover:not(:disabled) {
+  background: var(--btn-primary-bg-hover);
+}
+
+/*
+ * Опасное действие. «Заменить записи» затирает текущую базу содержимым файла,
+ * «Экспортировать» выгружает все секреты в нешифрованный файл, «Удалить
+ * запись» необратимо. Прежде первые две подсвечивались как главные - просто
+ * потому что стояли последними в разметке, и самым заметным элементом экрана
+ * оказывалось разрушительное действие.
+ *
+ * Такая кнопка не притягивает взгляд заливкой, а помечена цветом опасности.
+ * Приглашает по-прежнему «Отмена»: она нейтральная и стоит первой.
+ */
+.import-export-panel__modal-actions button:last-child,
+.record-card__modal-delete-btn {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: transparent;
+}
+
+.import-export-panel__modal-actions button:last-child:hover:not(:disabled),
+.record-card__modal-delete-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--danger);
+  color: var(--danger);
+}

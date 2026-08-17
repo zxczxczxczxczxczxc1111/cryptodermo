@@ -129,11 +129,11 @@
   font-size: var(--fs-ui);
 }
 
-.editor__title-input:focus,
-.editor__note-textarea:focus,
-.editor__tag-input-row input:focus,
-.editor__field-name:focus,
-.editor__field-value:focus {
+.editor__title-input:focus-visible,
+.editor__note-textarea:focus-visible,
+.editor__tag-input-row input:focus-visible,
+.editor__field-name:focus-visible,
+.editor__field-value:focus-visible {
   outline: var(--focus-ring-w) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
@@ -374,84 +374,4 @@
 .editor__save-error {
   color: var(--danger);
   font-size: var(--fs-ui);
-}
-
-/*
- * Модалки (диалог несохранённых изменений, предупреждение об уменьшении
- * числа записей) - тень допустима только здесь и у выпадающих меню (R61,
- * см. PasswordGenerator.css - тот же приём с локальной переменной, общего
- * --shadow токена в tokens.css нет и заводить его не в зоне этого тикета).
- */
-.editor__modal-overlay {
-  /* Затемнение подложки модалки - не в tokens.css (там нет цвета под эту
-     роль, заводить общий токен вне зоны этого тикета), локальная
-     переменная тем же приёмом, что и --local-shadow в .editor__modal ниже
-     и в PasswordGenerator.css. */
-  --overlay-scrim: var(--scrim);
-
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--overlay-scrim);
-  z-index: 100;
-}
-
-.editor__modal {
-  --local-shadow: var(--shadow-2);
-
-  width: min(420px, 90vw);
-  padding: var(--sp-6);
-  border-radius: var(--r-card);
-  border: var(--border-w) solid var(--border-strong);
-  background: var(--surface-raised);
-  box-shadow: var(--local-shadow);
-  color: var(--text);
-  font-family: var(--font-ui);
-}
-
-.editor__modal h2 {
-  margin: 0 0 var(--sp-3);
-  font-size: var(--fs-ui-lg);
-}
-
-.editor__modal p {
-  margin: 0 0 var(--sp-4);
-  color: var(--text-dim);
-  font-size: var(--fs-ui);
-}
-
-.editor__modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--sp-2);
-}
-
-.editor__modal-actions button {
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-field);
-  border: var(--border-w) solid var(--border);
-  background: var(--surface-hover);
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: var(--fs-ui);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.editor__modal-actions button:hover {
-  background: var(--btn-bg-hover);
-}
-
-.editor__modal-actions button:focus-visible {
-  outline: var(--focus-ring-w) solid var(--focus-ring);
-  outline-offset: var(--focus-ring-offset);
-}
-
-.editor__modal-actions button:last-child {
-  background: var(--btn-primary-bg);
-  border-color: var(--btn-primary-bg);
-  color: var(--btn-primary-fg);
-  font-weight: var(--fw-semibold);
 }

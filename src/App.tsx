@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useModalFocus } from "./hooks/useModalFocus";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { exeDir } from "./lib/tauriApi";
@@ -14,6 +15,11 @@ import { List } from "./screens/List";
 import { Editor, type EditorHandle, formatCountDecreaseMessage, type CountDecreaseWarning } from "./screens/Editor";
 import { Settings } from "./screens/Settings";
 import "./tokens.css";
+// Все модальные окна приложения описаны одним файлом (см. его шапку): до
+// 17.08.2026 эти правила жили четырьмя посимвольно совпадающими копиями в
+// четырёх компонентах. Импорт здесь, а не в каждом из них, - модалки всех
+// четырёх владельцев рендерятся под этим деревом.
+import "./modal.css";
 import "./App.css";
 
 /**
@@ -271,6 +277,8 @@ function App() {
   const [remainingMs, setRemainingMs] = useState(DEFAULT_AUTO_LOCK_TIMEOUT_MS);
   const [lastBackupAt, setLastBackupAt] = useState<Date | null>(null);
   const [importCountWarning, setImportCountWarning] = useState<CountDecreaseWarning | null>(null);
+  const importCountWarningRef = useRef<HTMLDivElement>(null);
+  useModalFocus(importCountWarningRef, Boolean(importCountWarning));
   const [importSaveError, setImportSaveError] = useState<string | null>(null);
 
   const editorRef = useRef<EditorHandle>(null);
@@ -755,6 +763,7 @@ function App() {
             {importCountWarning && (
               <div className="app-modal-overlay" role="presentation">
                 <div
+                  ref={importCountWarningRef}
                   className="app-modal"
                   role="dialog"
                   aria-modal="true"

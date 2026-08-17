@@ -1,4 +1,5 @@
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent, useRef } from "react";
+import { useModalFocus } from "../hooks/useModalFocus";
 import { save } from "@tauri-apps/plugin-dialog";
 import type { Attachment, Item, ItemField, ItemType, VaultStore } from "../lib/vaultStore";
 import { writeVaultAtomic } from "../lib/tauriApi";
@@ -160,6 +161,8 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
   const [copyError, setCopyError] = useState<string | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const deleteConfirmRef = useRef<HTMLDivElement>(null);
+  useModalFocus(deleteConfirmRef, deleteConfirmVisible);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const hasHistory = (item.history?.length ?? 0) > 0;
@@ -507,6 +510,7 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
       {deleteConfirmVisible && (
         <div className="record-card__modal-overlay" role="presentation">
           <div
+            ref={deleteConfirmRef}
             className="record-card__modal"
             role="dialog"
             aria-modal="true"

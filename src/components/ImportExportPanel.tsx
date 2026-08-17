@@ -1,4 +1,5 @@
-import { useId, useState, type KeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent, useRef } from "react";
+import { useModalFocus } from "../hooks/useModalFocus";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { Item, VaultStore } from "../lib/vaultStore";
 import { readVault, writeVaultAtomic } from "../lib/tauriApi";
@@ -125,6 +126,10 @@ export function ImportExportPanel({
   const [busy, setBusy] = useState<"copy" | "export" | "import" | null>(null);
   const [importState, setImportState] = useState<ImportState>({ kind: "idle" });
   const [exportConfirmVisible, setExportConfirmVisible] = useState(false);
+  const exportConfirmRef = useRef<HTMLDivElement>(null);
+  const importConfirmRef = useRef<HTMLDivElement>(null);
+  useModalFocus(exportConfirmRef, exportConfirmVisible);
+  useModalFocus(importConfirmRef, importState.kind === "confirming");
   const confirmTitleId = useId();
   const exportConfirmTitleId = useId();
 
@@ -318,6 +323,7 @@ export function ImportExportPanel({
       {exportConfirmVisible && (
         <div className="import-export-panel__modal-overlay" role="presentation">
           <div
+ref={exportConfirmRef}
             className="import-export-panel__modal"
             role="dialog"
             aria-modal="true"
@@ -345,6 +351,7 @@ export function ImportExportPanel({
       {importState.kind === "confirming" && (
         <div className="import-export-panel__modal-overlay" role="presentation">
           <div
+ref={importConfirmRef}
             className="import-export-panel__modal"
             role="dialog"
             aria-modal="true"

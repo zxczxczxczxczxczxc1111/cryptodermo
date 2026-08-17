@@ -1,4 +1,5 @@
 import { forwardRef, useId, useImperativeHandle, useRef, useState, type KeyboardEvent } from "react";
+import { useModalFocus } from "../hooks/useModalFocus";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   ItemCountDecreasedError,
@@ -537,7 +538,11 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   const [generatorOpen, setGeneratorOpen] = useState(false);
 
   const [closeConfirmVisible, setCloseConfirmVisible] = useState(false);
+  const closeConfirmRef = useRef<HTMLDivElement>(null);
+  const countWarningRef = useRef<HTMLDivElement>(null);
   const [countWarning, setCountWarning] = useState<CountDecreaseWarning | null>(null);
+  useModalFocus(closeConfirmRef, closeConfirmVisible);
+  useModalFocus(countWarningRef, Boolean(countWarning));
 
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attachmentWarning, setAttachmentWarning] = useState<string | null>(null);
@@ -1053,7 +1058,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
 
       {closeConfirmVisible && (
         <div className="editor__modal-overlay" role="presentation">
-          <div className="editor__modal" role="dialog" aria-modal="true" aria-labelledby="editor-unsaved-title">
+          <div ref={closeConfirmRef} className="editor__modal" role="dialog" aria-modal="true" aria-labelledby="editor-unsaved-title">
             <h2 id="editor-unsaved-title">{UNSAVED_CHANGES_TITLE}</h2>
             <p>Правки ещё не сохранены. Сохранить их перед закрытием?</p>
             <div className="editor__modal-actions">
@@ -1094,7 +1099,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
 
       {countWarning && (
         <div className="editor__modal-overlay" role="presentation">
-          <div className="editor__modal" role="dialog" aria-modal="true" aria-labelledby="editor-count-warning-title">
+          <div ref={countWarningRef} className="editor__modal" role="dialog" aria-modal="true" aria-labelledby="editor-count-warning-title">
             <h2 id="editor-count-warning-title">Число записей уменьшилось</h2>
             <p>{formatCountDecreaseMessage(countWarning)}</p>
             <div className="editor__modal-actions">

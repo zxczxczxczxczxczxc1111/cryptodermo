@@ -131,13 +131,24 @@
   list-style: none;
 }
 
+/*
+ * Тег. Тот же вид, что и в редакторе (`.editor__tag-chip`): раньше одна и та
+ * же сущность выглядела в двух местах по-разному - здесь мельче, приглушённее
+ * и без рамки, там крупнее, ярче и с рамкой. Разошлись они не по замыслу, а
+ * потому что писались в разных тикетах.
+ *
+ * Прописные с разрядкой убраны: тег это имя, придуманное человеком
+ * («Криптовалюта», «Работа»), а не служебная метка вроде «ПАРОЛЬ · 5 МИН
+ * НАЗАД». Ломать чужие слова в капс незачем.
+ */
 .record-card__tag {
   padding: var(--sp-0) var(--sp-2);
   border-radius: var(--r-chip);
-  background: var(--surface-raised);
+  background: var(--surface-hover);
+  border: var(--border-w) solid var(--border);
   color: var(--text-dim);
-  font-size: var(--fs-label);
-  letter-spacing: var(--ls-label);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
 }
 
 .record-card__tabs {
@@ -340,10 +351,17 @@
   list-style: none;
 }
 
+/*
+ * Запись истории. Это снимок СТАРЫХ значений, то есть данные, которых больше
+ * нет, - и выглядеть они должны соответственно: тише, чем текущие поля, а не
+ * так же. Прежде запись истории сидела на той же поверхности, что и активные
+ * поля, и на беглый взгляд их можно было перепутать.
+ */
 .record-card__history-entry {
   padding: var(--sp-3);
   border-radius: var(--r-field);
-  background: var(--surface-raised);
+  border: var(--border-w) solid var(--border);
+  background: transparent;
 }
 
 .record-card__history-entry + .record-card__history-entry {
@@ -353,10 +371,14 @@
 .record-card__history-date {
   display: block;
   margin-bottom: var(--sp-2);
-  color: var(--text-dim);
-  font-size: var(--fs-label);
+  color: var(--text-faint);
+  font-size: var(--fs-2xs);
+  line-height: var(--lh-2xs);
   letter-spacing: var(--ls-label);
   text-transform: uppercase;
+  /* Табличные цифры: даты стоят столбцом одна под другой, и без этого числа
+     разной ширины давали бы рваный левый край. */
+  font-variant-numeric: tabular-nums;
 }
 
 .record-card__history-field {
@@ -372,6 +394,45 @@
 .record-card__history-field-name {
   flex: none;
   min-width: var(--history-field-name-w);
-  color: var(--text-dim);
-  font-size: var(--fs-label);
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}
+
+/*
+ * Подтверждение копирования.
+ *
+ * Копирование - самое частое действие во всём приложении, и раньше оно
+ * подтверждалось только сменой подписи на «Скопировано». В монохроме такую
+ * смену легко пропустить: в момент нажатия человек обычно смотрит на значение,
+ * а не на кнопку, которую только что нажал.
+ *
+ * Вспышка идёт по градиенту фона, а не по прозрачности элемента: анимировать
+ * opacity кнопки означало бы на мгновение погасить и её текст, то есть скрыть
+ * ровно то слово, ради которого всё затевалось.
+ */
+@keyframes record-card-copied {
+  0% {
+    background: var(--surface-selected);
+    border-color: var(--border-active);
+  }
+  100% {
+    background: transparent;
+    border-color: var(--border);
+  }
+}
+
+.record-card__field-btn--copied {
+  color: var(--text-strong);
+  animation: record-card-copied 900ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .record-card__field-btn--copied {
+    animation: none;
+    /* Без движения подтверждение всё равно должно быть видно - остаётся
+       статичная заливка на те же две секунды, что живёт подпись. */
+    background: var(--surface-selected);
+    border-color: var(--border-active);
+  }
 }

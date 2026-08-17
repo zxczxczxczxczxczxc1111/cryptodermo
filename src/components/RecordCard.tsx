@@ -384,6 +384,12 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
             </p>
           )}
 
+          {/* Живая область для экранных читалок: смену подписи на кнопке они
+              не замечают, а подтверждение копирования получить обязаны. */}
+          <span className="visually-hidden" role="status" aria-live="polite">
+            {copiedField ? `Значение поля «${copiedField}» скопировано` : ""}
+          </span>
+
           {copyError && (
             <p className="record-card__copy-error" role="alert">
               {copyError}
@@ -418,7 +424,26 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                       {isRevealed ? "Скрыть" : "Показать"}
                     </button>
                   )}
-                  <button type="button" className="record-card__field-btn" onClick={() => handleCopy(field)}>
+                  {/*
+                    Отклик на копирование - самое частое действие в
+                    приложении. Раньше он был чисто текстовым: подпись менялась
+                    на «Скопировано» и через две секунды возвращалась, без
+                    единого движения. В монохроме такую смену легко пропустить,
+                    особенно если смотришь в этот момент на значение, а не на
+                    кнопку.
+                    Класс-модификатор даёт короткую вспышку (см. CSS), а
+                    Экранной читалке то же самое сообщает живая область ниже
+                    по разметке: без неё подтверждение существовало только для
+                    зрячих.
+                  */}
+                  <button
+                    type="button"
+                    className={
+                      "record-card__field-btn" +
+                      (copiedField === field.name ? " record-card__field-btn--copied" : "")
+                    }
+                    onClick={() => handleCopy(field)}
+                  >
                     {copiedField === field.name ? "Скопировано" : "Копировать"}
                   </button>
                 </div>

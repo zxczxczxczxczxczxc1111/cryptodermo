@@ -156,16 +156,20 @@
   gap: var(--sp-1);
 }
 
+/* Тот же чип, что и в карточке записи (`.record-card__tag`) - см. комментарий
+   там. Отличие только одно и оно по делу: здесь внутри есть кнопка удаления,
+   поэтому нужен inline-flex с зазором. */
 .editor__tag-chip {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
   padding: var(--sp-0) var(--sp-2);
   border-radius: var(--r-chip);
-  background: var(--surface-raised);
+  background: var(--surface-hover);
   border: var(--border-w) solid var(--border);
-  color: var(--text);
-  font-size: var(--fs-ui);
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
 }
 
 .editor__tag-remove,

@@ -347,25 +347,30 @@ function App() {
    *
    * `getCurrentWindow().onCloseRequested()` - тот же `@tauri-apps/api/window`,
    * что уже использует `useAutoLock.ts` для `onResized`/`isMinimized`
-   * (interfaces.md, "Из таска 06"), не новая зависимость. Сигнатура и
-   * поведение проверены по документации Tauri v2 через Context7
-   * (`/websites/v2_tauri_app`, тот же источник, что уже использовала
-   * спецификация) - официальный пример делает ровно то же самое: дождаться
-   * решения пользователя внутри async-обработчика и вызвать
-   * `event.preventDefault()` ТОЛЬКО если закрытие нужно отменить. Если
-   * `preventDefault()` не вызван - Tauri закрывает окно сам после того, как
-   * обработчик отработал; вызывать `close()` вручную не нужно (это ПРОЩЕ,
-   * чем "всегда preventDefault + закрыть вручную потом").
+   * (interfaces.md, "Из таска 06"), не новая зависимость.
    *
-   * Разрешения: `src-tauri/capabilities/default.json` уже содержит
-   * `core:default`, который по документации Tauri v2 включает
-   * `core:window:default`/`core:event:default` - тот же набор, под которым
-   * уже работает `onResized` в useAutoLock.ts без отдельных правок
-   * capabilities. `onCloseRequested` - тоже подписка на событие, не команда
-   * (в отличие от `core:window:allow-close`, который нужен только чтобы
-   * самому ВЫЗВАТЬ закрытие из JS - а этот код специально устроен так,
-   * чтобы не звать `close()` самому, см. выше) - менять `src-tauri/` не
-   * потребовалось (вне зоны этого тикета).
+   * ИСПРАВЛЕНО (багфикс "крестик не закрывает окно"): официальный пример из
+   * документации Tauri v2 (Context7, `/websites/v2_tauri_app`) вызывает
+   * `event.preventDefault()` только для отмены и ничего не делает, если
+   * закрытие подтверждено - оставляя впечатление, что Tauri сам закроет окно.
+   * Живой репро (WM_CLOSE через Win32 `PostMessage`, тот же сигнал, что шлёт
+   * клик по крестику, плюс инструментированный `onCloseRequested` с логом
+   * через локальный HTTP-сервер, т.к. в этом проекте нет способа читать
+   * devtools-консоль автотестом) показало обратное на этой версии
+   * `@tauri-apps/api`: обработчик отрабатывал (`isPreventDefault() === false`),
+   * но окно оставалось открытым - без явного `destroy()`/`close()` из JS
+   * ничего не закрывается. Поэтому здесь после `if`-блока стоит явный
+   * `getCurrentWindow().destroy()`, а не расчёт на неявное поведение.
+   *
+   * Разрешения: `src-tauri/capabilities/default.json` содержал только
+   * `core:default`, который включает `core:window:default` - но это ТОЛЬКО
+   * read-доступ (размер/позиция/видимость/состояние окна), не закрытие.
+   * Подписка на `onCloseRequested` сама по себе прав не требует, но явный
+   * `getCurrentWindow().destroy()` ниже - команда, а не событие - без права
+   * на неё падал с `"window.destroy not allowed. Permissions associated
+   * with this command: core:window:allow-destroy"` (поймано этим же живым
+   * репро). `core:window:allow-destroy` добавлен в
+   * `src-tauri/capabilities/default.json` этим же исправлением.
    *
    * `screenRef` (не `screen` напрямую) - обработчик регистрируется один раз
    * (пустой массив зависимостей), поэтому обязан читать актуальное значение
@@ -382,10 +387,23 @@ function App() {
           const ok = await editorRef.current.requestClose();
           if (!ok) {
             event.preventDefault(); // пользователь отменил закрытие - окно остаётся открытым
+            return;
           }
         }
-        // ok === true, или редактор не открыт: preventDefault не вызван -
-        // Tauri закрывает окно сам после этого обработчика.
+        // ok === true, или редактор не открыт: закрываем явно. Живой репро
+        // (см. отчёт по багфиксу закрытия окна) показал, что предположение
+        // "Tauri закроет окно сам, если preventDefault() не вызван" не
+        // подтвердилось на практике - крестик молча не закрывал окно ни на
+        // одном экране. `destroy()`, а не `close()` - `close()` сам
+        // заново эмитирует `close-requested` (см. её же JSDoc в
+        // `@tauri-apps/api/window`), что вернуло бы выполнение в этот же
+        // обработчик; `destroy()` закрывает окно напрямую, без повторного
+        // события.
+        try {
+          await getCurrentWindow().destroy();
+        } catch (err) {
+          console.error("App: не удалось закрыть окно", err);
+        }
       })
       .then((unlisten) => {
         if (disposed) unlisten();

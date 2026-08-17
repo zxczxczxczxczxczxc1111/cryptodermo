@@ -9,3 +9,8 @@ __pycache__/
 *.pyc
 .DS_Store
 Thumbs.db
+
+# База и настройки, если приложение запускали из каталога репозитория
+vault.dat
+vault.settings.json
+backups/

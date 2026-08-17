@@ -538,3 +538,39 @@
   line-height: var(--lh-sm);
   text-align: center;
 }
+
+/* Кнопка-иконка в шапке карточки (звезда, дублирование). Размером под соседние
+   текстовые кнопки, чтобы ряд не прыгал по высоте. */
+.record-card__icon-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-field);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.record-card__icon-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+/* Закреплённая запись: звезда залита и светлее остального ряда - это
+   состояние, а не наведение, поэтому держится постоянно. */
+.record-card__icon-btn--on {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+}
+
+.record-card__icon-btn:focus-visible {
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}

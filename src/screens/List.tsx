@@ -3,7 +3,7 @@ import type { Item, ItemField, ItemType, VaultStore } from "../lib/vaultStore";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { RecordCard, TYPE_LABELS, hasStaleSecretField } from "../components/RecordCard";
 import { StatusDot } from "../components/StatusDot";
-import { PlusIcon, CopyIcon, CheckIcon } from "../components/icons";
+import { PlusIcon, CopyIcon, CheckIcon, StarIcon } from "../components/icons";
 import "./List.css";
 
 /**
@@ -184,6 +184,9 @@ export const LIST_PAGE_JUMP = 10;
 
 /** Сколько держится галочка после копирования из строки. */
 export const COPIED_FEEDBACK_MS = 1600;
+
+/** Пометка в названии копии - иначе в списке две неразличимые строки. */
+export const DUPLICATE_SUFFIX = "(копия)";
 
 /**
  * Куда перевести выделение по нажатию клавиши. `null` - клавиша не про
@@ -418,6 +421,54 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
   }
 
   /**
+   * Закрепить или открепить запись.
+   *
+   * Пишется на диск сразу: закрепление это состояние, которое человек ожидает
+   * увидеть и после перезапуска, а откладывать запись до какого-то будущего
+   * «сохранить» в этом приложении негде - явной кнопки сохранения у списка
+   * нет.
+   */
+  async function handleTogglePinned(id: string, pinned: boolean) {
+    try {
+      store.setPinned(id, pinned);
+      await store.save(vaultPath);
+      setLocalVersion((v) => v + 1);
+      onStoreChanged?.();
+    } catch (err) {
+      console.error("List: не удалось изменить закрепление записи", err);
+    }
+  }
+
+  /**
+   * Копия записи, сразу открытая в редакторе.
+   *
+   * Название получает пометку, иначе в списке окажутся две неразличимые
+   * строки. История НЕ копируется: это журнал изменений исходной записи, к
+   * новой он отношения не имеет. Закрепление тоже не наследуется - копия
+   * заводится, чтобы её править, а не чтобы она сразу заняла место наверху.
+   */
+  async function handleDuplicate(id: string) {
+    const source = full.items.find((i) => i.id === id);
+    if (!source) return;
+    try {
+      const copy = store.addItem({
+        type: source.type,
+        title: `${source.title} ${DUPLICATE_SUFFIX}`,
+        tags: [...source.tags],
+        fields: source.fields.map((f) => ({ ...f })),
+        note: source.note,
+        attachments: source.attachments.map((a) => ({ ...a, id: crypto.randomUUID() })),
+      });
+      await store.save(vaultPath);
+      setLocalVersion((v) => v + 1);
+      onStoreChanged?.();
+      onOpenItem(copy.id);
+    } catch (err) {
+      console.error("List: не удалось создать копию записи", err);
+    }
+  }
+
+  /**
    * Клавиатура списка. Всё, что делается мышью в левой колонке, должно
    * делаться и с клавиатуры: до этого работал единственный Escape, и любое
    * действие требовало руки на мыши.
@@ -559,6 +610,13 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
                       >
                         <span className="list__row-title-line">
                           {stale && <StatusDot kind="oldPassword" className="list__row-dot" />}
+                          {/* Звезда только у закреплённых: пустой контур в
+                              каждой строке превратил бы список в частокол. */}
+                          {item.pinned && (
+                            <span className="list__row-pin" aria-label="Закреплена" title="Закреплена">
+                              <StarIcon filled size={12} />
+                            </span>
+                          )}
                           <span className="list__row-title">{item.title || "(без названия)"}</span>
                         </span>
                         <span className="list__row-meta">
@@ -604,6 +662,8 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
           <RecordCard
             item={selectedItem}
             onEdit={onOpenItem}
+            onTogglePinned={(id, pinned) => void handleTogglePinned(id, pinned)}
+            onDuplicate={(id) => void handleDuplicate(id)}
             store={store}
             vaultPath={vaultPath}
             onAttachmentsChanged={handleAttachmentsChanged}

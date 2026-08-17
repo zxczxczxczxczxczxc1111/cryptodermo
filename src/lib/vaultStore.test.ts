@@ -698,3 +698,80 @@ describe("VaultStore: recovery after corruption (R114i)", () => {
     expect(store.search("")).toMatchObject([{ title: "recovered" }]);
   });
 });
+
+describe("setPinned", () => {
+  async function freshStore() {
+    const store = new VaultStore();
+    await store.createNewVault("пароль", 1000);
+    return store;
+  }
+
+  it("закрепляет и открепляет запись", async () => {
+    const store = await freshStore();
+    const item = store.addItem({ type: "login", title: "A" });
+    expect(store.search("")[0].pinned).toBeUndefined();
+
+    store.setPinned(item.id, true);
+    expect(store.search("")[0].pinned).toBe(true);
+
+    store.setPinned(item.id, false);
+    expect(store.search("")[0].pinned).toBeUndefined();
+  });
+
+  it("снятое закрепление УДАЛЯЕТ поле, а не пишет false", async () => {
+    // База, в которой избранным не пользовались, не должна отличаться от базы
+    // прежней версии - иначе старые и новые файлы расходятся на пустом месте.
+    const store = await freshStore();
+    const item = store.addItem({ type: "login", title: "A" });
+    store.setPinned(item.id, true);
+    store.setPinned(item.id, false);
+    expect("pinned" in store.search("")[0]).toBe(false);
+  });
+
+  it("НЕ двигает updatedAt", async () => {
+    // Иначе звёздочка перекидывала бы запись в начало «недавно изменённых» и
+    // перемешивала бы порядок остальных.
+    const store = await freshStore();
+    const item = store.addItem({ type: "login", title: "A" });
+    const before = store.search("")[0].updatedAt;
+    store.setPinned(item.id, true);
+    expect(store.search("")[0].updatedAt).toBe(before);
+  });
+
+  it("поднимает закреплённые наверх, сохраняя относительный порядок остальных", async () => {
+    // Записи, созданные в одну миллисекунду, имеют одинаковый updatedAt, и
+    // сортировка их не переставляет (сравнение даёт 0, сортировка стабильна).
+    // Поэтому тест проверяет ровно то, что сортировка гарантирует: закреплённые
+    // впереди, относительный порядок внутри каждой группы не меняется.
+    const store = await freshStore();
+    const a = store.addItem({ type: "login", title: "A" });
+    store.addItem({ type: "login", title: "B" });
+    const c = store.addItem({ type: "login", title: "C" });
+    const initial = store.search("").map((i) => i.title);
+
+    store.setPinned(c.id, true);
+    const afterOne = store.search("").map((i) => i.title);
+    expect(afterOne[0]).toBe("C");
+    expect(afterOne.filter((t) => t !== "C")).toEqual(initial.filter((t) => t !== "C"));
+
+    store.setPinned(a.id, true);
+    const afterTwo = store.search("").map((i) => i.title);
+    expect(afterTwo.slice(0, 2).sort()).toEqual(["A", "C"]);
+    expect(afterTwo[2]).toBe("B");
+  });
+
+  it("сортирует по свежести внутри группы, когда метки времени различаются", async () => {
+    const store = await freshStore();
+    const older = store.addItem({ type: "login", title: "Старая" });
+    store.addItem({ type: "login", title: "Новая" });
+    // Явное изменение двигает updatedAt, и теперь метки заведомо разные.
+    await new Promise((r) => setTimeout(r, 5));
+    store.updateItem(older.id, { title: "Старая, но тронутая" });
+    expect(store.search("")[0].title).toBe("Старая, но тронутая");
+  });
+
+  it("бросает ItemNotFoundError на неизвестном id", async () => {
+    const store = await freshStore();
+    expect(() => store.setPinned("нет такого", true)).toThrow(ItemNotFoundError);
+  });
+});

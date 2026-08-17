@@ -90,6 +90,15 @@ export type Item = {
   createdAt: string; // ISO8601
   updatedAt: string; // ISO8601
   history?: ItemHistoryEntry[];
+  /**
+   * Запись закреплена наверху списка (17.08.2026).
+   *
+   * Поле НЕобязательное, и это существенно: базы, созданные до появления
+   * избранного, его не содержат, а разбор не строгий - отсутствие читается как
+   * «не закреплена». Поэтому миграции не нужно, старый файл открывается новой
+   * версией и наоборот.
+   */
+  pinned?: boolean;
 };
 
 /** Данные для создания новой записи - всё, что не может выставить сам
@@ -102,6 +111,7 @@ export type NewItemInput = {
   fields?: ItemField[];
   note?: string;
   attachments?: Attachment[];
+  pinned?: boolean;
 };
 
 /** Поля записи, которые можно изменить через `updateItem` - `id`, `createdAt`
@@ -114,6 +124,13 @@ export type ItemPatch = Partial<{
   note: string;
   attachments: Attachment[];
 }>;
+
+/** Сравнение для порядка в списке - см. комментарий у `search`. */
+function compareForList(a: Item, b: Item): number {
+  const pinDiff = Number(b.pinned ?? false) - Number(a.pinned ?? false);
+  if (pinDiff !== 0) return pinDiff;
+  return b.updatedAt.localeCompare(a.updatedAt);
+}
 
 /** Запись с данным `id` не найдена в текущей коллекции. */
 export class ItemNotFoundError extends Error {
@@ -480,6 +497,14 @@ export class VaultStore {
    * (`structuredClone`), а не ссылки на внутреннее состояние - изменение
    * возвращённого объекта не обходит `updateItem`/флаг `isDirty`.
    */
+  /**
+   * Порядок записей в списке: закреплённые сверху, внутри каждой группы -
+   * недавно изменённые первыми.
+   *
+   * Закрепление намеренно НЕ считается изменением записи и не двигает
+   * `updatedAt`: иначе звёздочка перемешивала бы порядок остальных, и человек
+   * терял бы из виду то, над чем работал минуту назад.
+   */
   search(query: string): Item[] {
     this.assertLoaded();
     const q = query.trim().toLowerCase();
@@ -499,7 +524,7 @@ export class VaultStore {
     return this.items
       .filter(matches)
       .slice()
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .sort(compareForList)
       .map((item) => structuredClone(item));
   }
 
@@ -519,6 +544,9 @@ export class VaultStore {
       attachments: input.attachments ?? [],
       createdAt: now,
       updatedAt: now,
+      // Отсутствие поля вместо `false` - см. `setPinned`: база без избранного
+      // не должна отличаться от базы прежней версии.
+      ...(input.pinned ? { pinned: true } : {}),
     };
     this.items.push(structuredClone(item));
     this.dirty = true;
@@ -570,6 +598,30 @@ export class VaultStore {
     this.items[idx] = structuredClone(updated);
     this.dirty = true;
     return structuredClone(updated);
+  }
+
+  /**
+   * Закрепить запись наверху списка или снять закрепление.
+   *
+   * Отдельный метод, а не поле в `ItemPatch`, и это не педантизм: `updateItem`
+   * всегда двигает `updatedAt`, а закрепление изменением записи не является.
+   * Через патч звёздочка перекидывала бы запись в начало «недавно изменённых»
+   * и перемешивала бы порядок остальных - человек терял бы из виду то, над чем
+   * работал минуту назад.
+   */
+  setPinned(id: string, pinned: boolean): Item {
+    this.assertLoaded();
+    const idx = this.items.findIndex((item) => item.id === id);
+    if (idx === -1) throw new ItemNotFoundError(id);
+    // Снятое закрепление пишется как отсутствие поля, а не как `false`: так
+    // база, в которой избранным не пользовались, побайтово не отличается от
+    // базы старой версии.
+    const next: Item = { ...this.items[idx] };
+    if (pinned) next.pinned = true;
+    else delete next.pinned;
+    this.items[idx] = next;
+    this.dirty = true;
+    return structuredClone(next);
   }
 
   /** Удалить запись. Бросает `ItemNotFoundError`, если записи с таким `id`

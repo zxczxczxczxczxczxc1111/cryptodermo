@@ -321,3 +321,12 @@
 .list__row--active .list__row-meta {
   padding-right: var(--sp-6);
 }
+
+/* Звезда у закреплённой строки. Стоит перед названием, в одном ряду с точкой
+   устаревшего пароля - оба это метки состояния записи, а не действия. */
+.list__row-pin {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-dim);
+}

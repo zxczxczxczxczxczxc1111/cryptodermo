@@ -94,3 +94,32 @@ export function QrIcon({ size }: { size?: number }) {
     </Glyph>
   );
 }
+
+/** Звезда. `filled` - запись закреплена. */
+export function StarIcon({ filled = false, size }: { filled?: boolean; size?: number }) {
+  return (
+    <svg
+      width={size ?? 16}
+      height={size ?? 16}
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z" />
+    </svg>
+  );
+}
+
+/** Две наложенные страницы - дублирование записи. */
+export function DuplicateIcon({ size }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <rect x="8" y="3" width="13" height="13" rx="2" />
+      <path d="M16 19v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h1" />
+    </Glyph>
+  );
+}

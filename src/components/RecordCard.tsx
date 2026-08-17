@@ -5,7 +5,7 @@ import type { Attachment, Item, ItemField, ItemType, VaultStore } from "../lib/v
 import { writeVaultAtomic } from "../lib/tauriApi";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { StatusDot } from "./StatusDot";
-import { EyeIcon, CopyIcon, CheckIcon, QrIcon } from "./icons";
+import { EyeIcon, CopyIcon, CheckIcon, QrIcon, StarIcon, DuplicateIcon } from "./icons";
 import { buildQrMatrix, qrSvgPath, QrTooLongError, type QrMatrix } from "../lib/qr";
 import {
   previewKindFor,
@@ -135,6 +135,10 @@ export interface RecordCardProps {
    * опциональность и та же пара `store`/`vaultPath`, что и у
    * `onAttachmentsChanged` выше. */
   onDeleted?: (id: string) => void;
+  /** Закрепить или открепить запись. Не передан - звезда не рисуется. */
+  onTogglePinned?: (id: string, pinned: boolean) => void;
+  /** Создать копию записи и открыть её в редакторе. */
+  onDuplicate?: (id: string) => void;
 }
 
 type Tab = "fields" | "history";
@@ -158,6 +162,9 @@ const COPIED_LABEL = "Скопировано";
 const REVEAL_SHOW_LABEL = "Показать";
 const REVEAL_HIDE_LABEL = "Скрыть";
 const QR_LABEL = "Показать QR-код";
+const PIN_LABEL = "Закрепить наверху";
+const UNPIN_LABEL = "Открепить";
+const DUPLICATE_LABEL = "Дублировать запись";
 
 /**
  * Через сколько окно с QR-кодом закрывается само.
@@ -195,7 +202,10 @@ export function formatDeleteConfirmMessage(title: string): string {
   return `Удалить запись «${displayTitle}»? Действие нельзя отменить.`;
 }
 
-export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChanged, onDeleted }: RecordCardProps) {
+export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChanged, onDeleted,
+  onTogglePinned,
+  onDuplicate,
+}: RecordCardProps) {
   const [tab, setTab] = useState<Tab>("fields");
   const [revealed, setRevealed] = useState<Set<string>>(() => new Set());
   const [revealedHistory, setRevealedHistory] = useState<Set<string>>(() => new Set());
@@ -419,6 +429,33 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
           <h2 className="record-card__title">{item.title}</h2>
         </div>
         <div className="record-card__header-actions">
+          {/* Звезда и дублирование - иконками, как и всё остальное в карточке:
+              подписи здесь соревновались бы за место с «Редактировать». */}
+          {onTogglePinned && (
+            <button
+              type="button"
+              className={
+                "record-card__icon-btn" + (item.pinned ? " record-card__icon-btn--on" : "")
+              }
+              onClick={() => onTogglePinned(item.id, !item.pinned)}
+              aria-pressed={item.pinned === true}
+              aria-label={item.pinned ? UNPIN_LABEL : PIN_LABEL}
+              title={item.pinned ? UNPIN_LABEL : PIN_LABEL}
+            >
+              <StarIcon filled={item.pinned === true} />
+            </button>
+          )}
+          {onDuplicate && (
+            <button
+              type="button"
+              className="record-card__icon-btn"
+              onClick={() => onDuplicate(item.id)}
+              aria-label={DUPLICATE_LABEL}
+              title={DUPLICATE_LABEL}
+            >
+              <DuplicateIcon />
+            </button>
+          )}
           <button type="button" className="record-card__edit-btn" onClick={() => onEdit(item.id)}>
             Редактировать
           </button>

@@ -511,3 +511,30 @@
   color: var(--text-dim);
   font-size: var(--fs-sm);
 }
+
+/*
+ * Окно с QR-кодом.
+ *
+ * Ширина у него своя, шире обычной модалки: код должен быть достаточно
+ * крупным, чтобы камера ловила его с расстояния вытянутой руки, а не впритык
+ * к экрану.
+ */
+.record-card__qr-modal {
+  width: min(360px, 90vw);
+}
+
+.record-card__qr {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto var(--sp-4);
+  border-radius: var(--r-field);
+}
+
+.record-card__qr-note {
+  margin: 0 0 var(--sp-4);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  text-align: center;
+}

@@ -5,7 +5,8 @@ import type { Attachment, Item, ItemField, ItemType, VaultStore } from "../lib/v
 import { writeVaultAtomic } from "../lib/tauriApi";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { StatusDot } from "./StatusDot";
-import { EyeIcon, CopyIcon, CheckIcon } from "./icons";
+import { EyeIcon, CopyIcon, CheckIcon, QrIcon } from "./icons";
+import { buildQrMatrix, qrSvgPath, QrTooLongError, type QrMatrix } from "../lib/qr";
 import {
   previewKindFor,
   imageDataUrl,
@@ -156,6 +157,22 @@ const COPY_LABEL = "Копировать";
 const COPIED_LABEL = "Скопировано";
 const REVEAL_SHOW_LABEL = "Показать";
 const REVEAL_HIDE_LABEL = "Скрыть";
+const QR_LABEL = "Показать QR-код";
+
+/**
+ * Через сколько окно с QR-кодом закрывается само.
+ *
+ * Тот же принцип, что и у автоочистки буфера обмена: значение не должно
+ * оставаться на экране дольше, чем нужно для одного действия. Минута - это с
+ * запасом на «достать телефон, разблокировать, открыть камеру», но заметно
+ * меньше, чем «отошёл и забыл».
+ */
+export const QR_AUTO_CLOSE_MS = 60_000;
+
+/** Значение не помещается в QR-код. Показывается вместо кода, в самом окне -
+ * там же, где человек его ждал. */
+export const QR_TOO_LONG_MESSAGE =
+  "Значение слишком длинное для QR-кода. Скопируйте его обычной кнопкой.";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("ru-RU", {
@@ -204,6 +221,38 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const deleteConfirmRef = useRef<HTMLDivElement>(null);
   useModalFocus(deleteConfirmRef, deleteConfirmVisible);
+
+  /**
+   * Поле, значение которого сейчас показано QR-кодом, и сама матрица.
+   *
+   * Матрица считается один раз при открытии, а не на каждый кадр отрисовки:
+   * это перебор Reed-Solomon по всем маскам, и держать его в теле рендера
+   * значило бы пересчитывать код на любое изменение состояния карточки.
+   */
+  const [qrView, setQrView] = useState<{ fieldName: string; matrix: QrMatrix | null } | null>(null);
+  const qrRef = useRef<HTMLDivElement>(null);
+  useModalFocus(qrRef, qrView !== null);
+
+  // Окно с кодом закрывается само - см. QR_AUTO_CLOSE_MS. Таймер живёт ровно
+  // столько, сколько открыто окно: без очистки повторное открытие копило бы
+  // таймеры, и второй код закрылся бы раньше времени.
+  useEffect(() => {
+    if (!qrView) return;
+    const timer = window.setTimeout(() => setQrView(null), QR_AUTO_CLOSE_MS);
+    return () => window.clearTimeout(timer);
+  }, [qrView]);
+
+  function showQr(field: ItemField) {
+    try {
+      setQrView({ fieldName: field.name, matrix: buildQrMatrix(field.value) });
+    } catch (err) {
+      if (err instanceof QrTooLongError) {
+        setQrView({ fieldName: field.name, matrix: null });
+        return;
+      }
+      throw err;
+    }
+  }
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const hasHistory = (item.history?.length ?? 0) > 0;
@@ -311,7 +360,15 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
    * карточку через обработчик `List.tsx` (тот же приём, что в Editor.tsx
    * применяет к своим модалкам поверх `requestCloseInternal`). */
   function handleRecordCardKeyDown(e: KeyboardEvent<HTMLElement>) {
-    if (e.key !== "Escape" || !deleteConfirmVisible) return;
+    if (e.key !== "Escape") return;
+    // Окно с QR закрывается первым: оно и открывается последним, поверх всего
+    // остального.
+    if (qrView) {
+      e.stopPropagation();
+      setQrView(null);
+      return;
+    }
+    if (!deleteConfirmVisible) return;
     e.stopPropagation();
     setDeleteConfirmVisible(false);
   }
@@ -493,6 +550,19 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                   >
                     {copiedField === field.name ? <CheckIcon /> : <CopyIcon />}
                   </button>
+                  {/* QR - рядом с копированием: это тот же жест «забрать
+                      значение отсюда», только приёмник не буфер обмена, а
+                      телефон. Отдельной крупной кнопки не заводим, иначе
+                      строка поля превращается в панель инструментов. */}
+                  <button
+                    type="button"
+                    className="record-card__field-btn record-card__field-btn--icon"
+                    onClick={() => showQr(field)}
+                    aria-label={QR_LABEL}
+                    title={QR_LABEL}
+                  >
+                    <QrIcon />
+                  </button>
                 </div>
               </div>
             );
@@ -627,6 +697,49 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
               </li>
             ))}
         </ul>
+      )}
+
+      {qrView && (
+        <div className="record-card__modal-overlay" role="presentation">
+          <div
+            ref={qrRef}
+            className="record-card__modal record-card__qr-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="record-card-qr-title"
+          >
+            <h2 id="record-card-qr-title">{qrView.fieldName}</h2>
+            {qrView.matrix ? (
+              <>
+                {/* Код рисуется одним путём по матрице (см. lib/qr.ts).
+                    Белый фон здесь не из палитры и не ошибка: сканеру нужен
+                    контраст тёмного по светлому, и тёмная плитка на тёмном
+                    фоне читалась бы через раз. */}
+                <svg
+                  className="record-card__qr"
+                  viewBox={qrSvgPath(qrView.matrix).viewBox}
+                  role="img"
+                  aria-label={`QR-код со значением поля «${qrView.fieldName}»`}
+                  shapeRendering="crispEdges"
+                >
+                  <rect width="100%" height="100%" fill="#ffffff" />
+                  <path d={qrSvgPath(qrView.matrix).path} fill="#000000" />
+                </svg>
+                <p className="record-card__qr-note">
+                  Наведите камеру телефона. Значение нигде не сохраняется и не уходит в сеть,
+                  окно закроется само через минуту.
+                </p>
+              </>
+            ) : (
+              <p className="record-card__qr-note">{QR_TOO_LONG_MESSAGE}</p>
+            )}
+            <div className="record-card__modal-actions">
+              <button type="button" onClick={() => setQrView(null)}>
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {deleteConfirmVisible && (

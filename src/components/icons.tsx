@@ -79,3 +79,18 @@ export function PlusIcon({ size }: { size?: number }) {
     </Glyph>
   );
 }
+
+/**
+ * QR-код: три поисковых узора по углам и пара модулей внутри. Не настоящий
+ * код, а знак - настоящий рисуется по матрице из `lib/qr.ts`.
+ */
+export function QrIcon({ size }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path d="M14 14h3v3h-3zM19 19h2M14 21h1M21 14v1" />
+    </Glyph>
+  );
+}

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { computeVisibleRange } from "./List";
+import {
+  computeVisibleRange,
+  nextSelectionIndex,
+  scrollTopToReveal,
+  quickCopyField,
+  shouldHijackCopy,
+  LIST_PAGE_JUMP,
+} from "./List";
 
 // Шов виртуализации (R96.1): диапазон DOM-строк, которые реально
 // рендерятся при заданной прокрутке, не должен зависеть от общего числа
@@ -46,5 +53,102 @@ describe("computeVisibleRange", () => {
       totalCount: 100,
     });
     expect(range).toEqual({ startIndex: 90, endIndex: 100 });
+  });
+});
+
+describe("nextSelectionIndex", () => {
+  it("двигает выделение вниз и вверх", () => {
+    expect(nextSelectionIndex(0, "ArrowDown", 5)).toBe(1);
+    expect(nextSelectionIndex(3, "ArrowUp", 5)).toBe(2);
+  });
+
+  it("упирается в края, а не зацикливается", () => {
+    // В списке на сотню записей перескок с последней на первую читается как
+    // сбой, а не как удобство.
+    expect(nextSelectionIndex(4, "ArrowDown", 5)).toBe(4);
+    expect(nextSelectionIndex(0, "ArrowUp", 5)).toBe(0);
+  });
+
+  it("из «ничего не выбрано» вниз ведёт к первой, вверх к последней", () => {
+    expect(nextSelectionIndex(-1, "ArrowDown", 5)).toBe(0);
+    expect(nextSelectionIndex(-1, "ArrowUp", 5)).toBe(4);
+  });
+
+  it("Home и End прыгают на края", () => {
+    expect(nextSelectionIndex(2, "Home", 5)).toBe(0);
+    expect(nextSelectionIndex(2, "End", 5)).toBe(4);
+  });
+
+  it("PageUp и PageDown идут постоянным шагом и не вылетают за границы", () => {
+    expect(nextSelectionIndex(0, "PageDown", 50)).toBe(LIST_PAGE_JUMP);
+    expect(nextSelectionIndex(0, "PageDown", 5)).toBe(4);
+    expect(nextSelectionIndex(3, "PageUp", 50)).toBe(0);
+  });
+
+  it("молчит на посторонних клавишах и на пустом списке", () => {
+    expect(nextSelectionIndex(0, "a", 5)).toBeNull();
+    expect(nextSelectionIndex(0, "ArrowDown", 0)).toBeNull();
+  });
+});
+
+describe("scrollTopToReveal", () => {
+  const ROW = 48;
+  const VIEW = 480; // ровно 10 строк
+
+  it("не трогает прокрутку, если строка и так видна", () => {
+    // Иначе список дёргался бы на каждое нажатие стрелки.
+    expect(scrollTopToReveal(5, ROW, VIEW, 0)).toBe(0);
+  });
+
+  it("подтягивает строку снизу ровно настолько, чтобы она поместилась", () => {
+    expect(scrollTopToReveal(10, ROW, VIEW, 0)).toBe(11 * ROW - VIEW);
+  });
+
+  it("поднимает к строке сверху", () => {
+    expect(scrollTopToReveal(2, ROW, VIEW, 5 * ROW)).toBe(2 * ROW);
+  });
+
+  it("в окне ниже одной строки показывает её начало, а не конец", () => {
+    // Сильно сжатое окно приложения: подтягивание к низу строки вытолкнуло бы
+    // за экран её название, то есть ровно то, ради чего к ней переходят.
+    expect(scrollTopToReveal(0, ROW, 20, 0)).toBe(0);
+    expect(scrollTopToReveal(3, ROW, 20, 0)).toBe(3 * ROW);
+  });
+});
+
+describe("quickCopyField", () => {
+  const item = (fields: { name: string; value: string; secret: boolean }[]) =>
+    ({ fields }) as never;
+
+  it("берёт первое секретное поле", () => {
+    const f = quickCopyField(
+      item([
+        { name: "Логин", value: "a", secret: false },
+        { name: "Пароль", value: "b", secret: true },
+      ]),
+    );
+    expect(f?.name).toBe("Пароль");
+  });
+
+  it("если секретных нет, берёт первое поле", () => {
+    // Заметка без паролей: скопировать что-то полезнее, чем не копировать ничего.
+    const f = quickCopyField(item([{ name: "Текст", value: "a", secret: false }]));
+    expect(f?.name).toBe("Текст");
+  });
+
+  it("возвращает null у записи без полей", () => {
+    expect(quickCopyField(item([]))).toBeNull();
+  });
+});
+
+describe("shouldHijackCopy", () => {
+  it("перехватывает Ctrl+C, когда ничего не выделено", () => {
+    expect(shouldHijackCopy("")).toBe(true);
+    expect(shouldHijackCopy(undefined)).toBe(true);
+  });
+
+  it("НЕ перехватывает, когда человек выделил текст", () => {
+    // Подменить буфер паролем в этот момент значит украсть чужое действие.
+    expect(shouldHijackCopy("выделенный текст")).toBe(false);
   });
 });

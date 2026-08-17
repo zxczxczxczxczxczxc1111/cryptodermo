@@ -271,3 +271,53 @@
   font-size: var(--fs-lg);
   text-align: center;
 }
+
+/*
+ * Кнопка копирования на строке списка.
+ *
+ * Строка это `<button>`, поэтому вложить в неё настоящую кнопку нельзя -
+ * разметка запрещает кнопку внутри кнопки, и браузер молча ломает структуру.
+ * Отсюда `<span role="button">` с `tabIndex={-1}`: в обход клавиатуры сюда
+ * попадать не нужно, для клавиатуры есть Ctrl+C на выбранной записи.
+ *
+ * В покое кнопки не видно совсем: список из пятнадцати строк с иконкой в
+ * каждой перестаёт читаться как список. Проявляется по наведению и на
+ * выбранной строке, то есть ровно там, где на неё могут нажать.
+ */
+.list__row {
+  position: absolute;
+}
+
+.list__row-copy {
+  position: absolute;
+  top: 50%;
+  right: var(--sp-3);
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-chip);
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+}
+
+.list__row:hover .list__row-copy,
+.list__row--active .list__row-copy {
+  opacity: 1;
+}
+
+.list__row-copy:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* Чтобы длинное название не заезжало под кнопку на наведении. */
+.list__row:hover .list__row-title-line,
+.list__row:hover .list__row-meta,
+.list__row--active .list__row-title-line,
+.list__row--active .list__row-meta {
+  padding-right: var(--sp-6);
+}

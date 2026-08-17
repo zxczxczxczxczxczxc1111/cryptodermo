@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import type { Item, ItemType, VaultStore } from "../lib/vaultStore";
+import type { Item, ItemField, ItemType, VaultStore } from "../lib/vaultStore";
+import { copyWithAutoClear } from "../lib/clipboard";
 import { RecordCard, TYPE_LABELS, hasStaleSecretField } from "../components/RecordCard";
 import { StatusDot } from "../components/StatusDot";
-import { PlusIcon } from "../components/icons";
+import { PlusIcon, CopyIcon, CheckIcon } from "../components/icons";
 import "./List.css";
 
 /**
@@ -171,6 +172,102 @@ function formatRelativeTime(iso: string, now: number): string {
 const SEARCH_PLACEHOLDER = "Поиск: название, логин, тег";
 const ADD_LABEL = "Добавить запись";
 
+/* -------------------------------------------------------------------------
+ * Клавиатура. Логика вынесена в чистые функции, как принято в проекте: сам
+ * обработчик - тонкая обвязка, а решения проверяются тестами без DOM.
+ * ---------------------------------------------------------------------- */
+
+/** На сколько строк прыгают PageUp/PageDown. Не считается от высоты окна
+ * намеренно: постоянный шаг предсказуем, а «страница» в списке, который
+ * виртуализирован и меняет высоту вместе с окном, каждый раз разная. */
+export const LIST_PAGE_JUMP = 10;
+
+/** Сколько держится галочка после копирования из строки. */
+export const COPIED_FEEDBACK_MS = 1600;
+
+/**
+ * Куда перевести выделение по нажатию клавиши. `null` - клавиша не про
+ * навигацию, обработчику делать нечего.
+ *
+ * Зацикливания нет намеренно: в списке на сотню записей перескок с последней
+ * на первую читается как сбой, а не как удобство. С края движение просто
+ * упирается.
+ */
+export function nextSelectionIndex(
+  current: number,
+  key: string,
+  count: number,
+  pageJump: number = LIST_PAGE_JUMP,
+): number | null {
+  if (count === 0) return null;
+  const clamp = (n: number) => Math.max(0, Math.min(count - 1, n));
+  switch (key) {
+    // Из «ничего не выбрано» вниз ведёт к первой записи, вверх к последней.
+    case "ArrowDown":
+      return current < 0 ? 0 : clamp(current + 1);
+    case "ArrowUp":
+      return current < 0 ? count - 1 : clamp(current - 1);
+    case "PageDown":
+      return clamp((current < 0 ? 0 : current) + pageJump);
+    case "PageUp":
+      return clamp((current < 0 ? 0 : current) - pageJump);
+    case "Home":
+      return 0;
+    case "End":
+      return count - 1;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Прокрутка, при которой строка `index` целиком попадает в окно просмотра.
+ *
+ * Нужна именно вручную: список виртуализирован, строки вне окна физически
+ * отсутствуют в разметке, и `scrollIntoView` вызывать не на чем. Возвращает
+ * прежнее значение, если строка и так видна - иначе список дёргался бы на
+ * каждое нажатие стрелки.
+ */
+export function scrollTopToReveal(
+  index: number,
+  rowHeight: number,
+  viewportHeight: number,
+  scrollTop: number,
+): number {
+  const top = index * rowHeight;
+  const bottom = top + rowHeight;
+  // Окно ниже одной строки (сильно сжатое окно приложения): показываем начало
+  // строки, а не конец. Иначе подтягивание к низу выталкивало бы за экран
+  // название записи, то есть ровно то, ради чего к ней и переходят.
+  if (rowHeight >= viewportHeight) return top;
+  if (top < scrollTop) return top;
+  if (bottom > scrollTop + viewportHeight) return Math.max(0, bottom - viewportHeight);
+  return scrollTop;
+}
+
+/**
+ * Какое поле копировать быстрым действием (кнопка на строке и Ctrl+C).
+ *
+ * Первое секретное - в записи типа «пароль» это и есть пароль, а копируют из
+ * списка почти всегда именно его. Если секретных полей нет вовсе (заметка),
+ * берётся первое поле: копировать нечего лучше, чем не копировать ничего.
+ */
+export function quickCopyField(item: Item): ItemField | null {
+  return item.fields.find((f) => f.secret) ?? item.fields[0] ?? null;
+}
+
+/**
+ * Перехватывать ли Ctrl+C как «скопировать пароль выбранной записи».
+ *
+ * Нет, если человек в этот момент выделил текст: он копирует именно его, и
+ * подмена буфера паролем была бы кражей действия. Проверка идёт по живому
+ * выделению, а не по типу элемента: выделить можно и в поле поиска, и в
+ * карточке записи справа.
+ */
+export function shouldHijackCopy(selectionText: string | null | undefined): boolean {
+  return !selectionText || selectionText.length === 0;
+}
+
 export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged, refreshToken, typeFilter, withAttachments }: ListProps) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -237,6 +334,9 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
     if (!stillVisible) setSelectedId(items[0].id);
   }, [items, selectedId]);
   const error = filtered.error ?? full.error;
+  /** Строка, по которой только что скопировали - для короткой галочки. */
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const selectedItem = selectedId ? (full.items.find((i) => i.id === selectedId) ?? null) : null;
 
   // Новый поисковый запрос - список строк логично начинать сверху, а не с
@@ -300,12 +400,95 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
     setSelectedId((current) => (current === id ? null : current));
   }
 
-  /** R89: Esc закрывает открытое - на этом экране "открытое" это карточка
-   * выбранной записи в правой колонке. Ничего не делает, если ничего не
-   * выбрано (нечего закрывать). */
+  /** Копирование пароля без открытия записи - кнопкой на строке и по Ctrl+C.
+   * Отдельно от копирования в карточке: там своя индикация на каждом поле, а
+   * здесь подтверждать нужно на строке, по которой человек и попал. */
+  async function handleQuickCopy(item: Item) {
+    const field = quickCopyField(item);
+    if (!field) return;
+    try {
+      await copyWithAutoClear(field.value);
+      setCopiedId(item.id);
+      window.setTimeout(() => {
+        setCopiedId((current) => (current === item.id ? null : current));
+      }, COPIED_FEEDBACK_MS);
+    } catch (err) {
+      console.error("List: не удалось скопировать значение в буфер обмена", err);
+    }
+  }
+
+  /**
+   * Клавиатура списка. Всё, что делается мышью в левой колонке, должно
+   * делаться и с клавиатуры: до этого работал единственный Escape, и любое
+   * действие требовало руки на мыши.
+   *
+   * Обработчик висит на всём экране, а не на поле поиска: фокус по ходу
+   * работы уходит и на строки, и в карточку справа, а стрелки должны водить
+   * по списку отовсюду.
+   */
   function handleListKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (e.key === "Escape" && selectedId !== null) {
-      setSelectedId(null);
+    const target = e.target as HTMLElement | null;
+    const inTextField =
+      target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+
+    if (e.key === "Escape") {
+      // Сначала снимается поиск, потом выбор: иначе Escape закрывал бы
+      // карточку, оставляя список отфильтрованным, и человек не понимал бы,
+      // куда делись остальные записи.
+      if (query !== "") {
+        setQuery("");
+        searchRef.current?.focus();
+      } else if (selectedId !== null) {
+        setSelectedId(null);
+      }
+      return;
+    }
+
+    if (e.ctrlKey && (e.key === "f" || e.key === "F")) {
+      e.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+      return;
+    }
+
+    // «/» как быстрый путь в поиск - привычка из почты и трекеров. Только
+    // когда не печатают: иначе слэш нельзя было бы ввести в текст.
+    if (e.key === "/" && !inTextField) {
+      e.preventDefault();
+      searchRef.current?.focus();
+      return;
+    }
+
+    if (e.ctrlKey && (e.key === "n" || e.key === "N") && onCreateNew) {
+      e.preventDefault();
+      onCreateNew();
+      return;
+    }
+
+    if (e.ctrlKey && (e.key === "c" || e.key === "C")) {
+      if (!shouldHijackCopy(window.getSelection()?.toString())) return;
+      if (!selectedItem) return;
+      e.preventDefault();
+      void handleQuickCopy(selectedItem);
+      return;
+    }
+
+    if (e.key === "Enter" && selectedItem && !inTextField) {
+      e.preventDefault();
+      onOpenItem(selectedItem.id);
+      return;
+    }
+
+    const currentIndex = selectedId === null ? -1 : items.findIndex((i) => i.id === selectedId);
+    const next = nextSelectionIndex(currentIndex, e.key, items.length);
+    if (next === null) return;
+    e.preventDefault();
+    const item = items[next];
+    setSelectedId(item.id);
+    const viewport = viewportRef.current;
+    if (viewport) {
+      const desired = scrollTopToReveal(next, ROW_HEIGHT, viewport.clientHeight, viewport.scrollTop);
+      if (desired !== viewport.scrollTop) viewport.scrollTop = desired;
     }
   }
 
@@ -314,6 +497,7 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
       <div className="list__rows-column">
         <div className="list__search">
           <input
+            ref={searchRef}
             type="search"
             className="list__search-input"
             placeholder={SEARCH_PLACEHOLDER}
@@ -381,6 +565,30 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
                           {TYPE_LABELS[item.type]} · {formatRelativeTime(item.updatedAt, now)}
                           {item.tags.length > 0 ? ` · ${item.tags.join(", ")}` : ""}
                         </span>
+                        {/*
+                          Копирование прямо со строки. Раньше путь был в четыре
+                          шага: найти, кликнуть, дождаться карточки, кликнуть
+                          копирование. Здесь их два. Кнопка проявляется по
+                          наведению и на выбранной строке (см. CSS), чтобы
+                          список в покое оставался списком, а не панелью
+                          кнопок. `stopPropagation` обязателен: без него клик
+                          заодно выбирал бы строку и дёргал карточку.
+                        */}
+                        {quickCopyField(item) && (
+                          <span
+                            role="button"
+                            tabIndex={-1}
+                            className="list__row-copy"
+                            aria-label={copiedId === item.id ? "Скопировано" : "Копировать пароль"}
+                            title={copiedId === item.id ? "Скопировано" : "Копировать пароль"}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleQuickCopy(item);
+                            }}
+                          >
+                            {copiedId === item.id ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+                          </span>
+                        )}
                       </button>
                     );
                   })}

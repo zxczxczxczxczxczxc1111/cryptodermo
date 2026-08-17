@@ -26,7 +26,7 @@
  * 3. Режим работает только с настроенным PIN. Мастер-пароль это пять миллионов
  *    итераций и несколько секунд ожидания, что убивает саму идею «быстро».
  */
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { VaultStore, type Item } from "../lib/vaultStore";
 import { readVault, exeDir } from "../lib/tauriApi";
@@ -287,8 +287,18 @@ export function QuickAccess() {
     }
   }
 
+  /** Тот же приём, что на обычном экране входа: щелчок в любое свободное место
+   * возвращает курсор в ввод PIN, а в открытом окне - в поиск. Попадать в
+   * маленькую мишень мышью незачем. */
+  function handleClick(e: MouseEvent<HTMLDivElement>) {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("button, input, textarea, a, [role='button']")) return;
+    if (phase.kind === "pin") pinInputRef.current?.focus();
+    else if (phase.kind === "open") searchRef.current?.focus();
+  }
+
   return (
-    <div className="quick" onKeyDown={handleKeyDown}>
+    <div className="quick" onKeyDown={handleKeyDown} onClick={handleClick}>
       <div className="quick__drag" data-tauri-drag-region />
       <button type="button" className="quick__close" onClick={quit} aria-label="Закрыть" title="Закрыть">
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">

@@ -24,7 +24,7 @@
  * и подписки (resize/onResized/matchMedia) - императивный код внутри
  * компонента, проверен чтением и сборкой, тем же способом, что и раньше.
  */
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { VaultStore } from "../lib/vaultStore";
 import { DecryptError } from "../lib/crypto";
@@ -1539,8 +1539,27 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
   const createDisabled =
     busy || password.length === 0 || passwordConfirm.length === 0 || passwordsMismatch;
 
+  /**
+   * Щелчок в любом свободном месте окна возвращает курсор в ввод PIN.
+   *
+   * До этого попадать нужно было ровно в ячейки - мишень в двадцать пикселей
+   * высотой посреди почти пустого чёрного экрана (замечено пользователем
+   * 17.08.2026). Промахнулся - и набор уходит в никуда, без всякого признака,
+   * что что-то не так.
+   *
+   * Щелчки по кнопкам и полям пропускаются: там у человека своё намерение, и
+   * перехватывать фокус значило бы ломать, например, кнопку перехода на
+   * мастер-пароль.
+   */
+  function handleScreenClick(e: MouseEvent<HTMLDivElement>) {
+    if (phase !== "pinEntry" || busy) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("button, input, textarea, a, [role='button']")) return;
+    pinInputRef.current?.focus();
+  }
+
   return (
-    <div className="lock-screen">
+    <div className="lock-screen" onClick={handleScreenClick}>
       <canvas ref={canvasRef} className="lock-screen__canvas" aria-hidden="true" />
       {/* На основном пути входа карточки нет вовсе: логотип и ячейки стоят
           прямо на чёрном. Рамка вокруг них превратила бы изображение,

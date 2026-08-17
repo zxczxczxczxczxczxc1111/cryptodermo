@@ -88,6 +88,7 @@
 .app-modal__actions button,
 .editor__modal-actions button,
 .record-card__modal-actions button,
+.settings__modal-actions button,
 .import-export-panel__modal-actions button {
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-field);
@@ -103,9 +104,17 @@
 .app-modal__actions button:hover:not(:disabled),
 .editor__modal-actions button:hover:not(:disabled),
 .record-card__modal-actions button:hover:not(:disabled),
+.settings__modal-actions button:hover:not(:disabled),
 .import-export-panel__modal-actions button:hover:not(:disabled) {
   background: var(--btn-bg-hover);
 }
+
+/*
+ * Замечание на будущее: селекторы здесь перечислены группами, и добавить новую
+ * модалку в одну группу, забыв про остальные, - готовая ошибка. Ровно так
+ * 17.08.2026 кнопка «Понятно» в настройках получила раскладку, но осталась с
+ * браузерным видом. Заводя новую модалку, пройди по ВСЕМ группам ниже и выше.
+ */
 
 /* --- Расхождения. Единственное, чем модалки отличаются друг от друга. --- */
 
@@ -114,7 +123,8 @@
  * «Всё равно сохранить», «Сохранить».
  */
 .app-modal__actions button:last-child,
-.editor__modal-actions button:last-child {
+.editor__modal-actions button:last-child,
+.settings__modal-actions button:last-child {
   background: var(--btn-primary-bg);
   border-color: var(--btn-primary-bg);
   color: var(--btn-primary-fg);
@@ -122,7 +132,8 @@
 }
 
 .app-modal__actions button:last-child:hover:not(:disabled),
-.editor__modal-actions button:last-child:hover:not(:disabled) {
+.editor__modal-actions button:last-child:hover:not(:disabled),
+.settings__modal-actions button:last-child:hover:not(:disabled) {
   background: var(--btn-primary-bg-hover);
 }
 

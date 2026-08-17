@@ -36,6 +36,7 @@ import { serializeContainer, parseContainer, FormatError, type VaultHeader } fro
 import { readVault } from "../lib/tauriApi";
 import { readSettings, updateSettings, DEFAULT_AUTO_LOCK_TIMEOUT_MS } from "../lib/settingsConfig";
 import { isValidPinFormat, setUpPin, resetPinLockout, PIN_MAX_LENGTH } from "../lib/pinLock";
+import { PasswordField } from "../components/PasswordField";
 import "../tokens.css";
 import "./Settings.css";
 
@@ -560,34 +561,31 @@ export function Settings({
           <label className="settings__label" htmlFor="settings-current-password">
             Текущий пароль
           </label>
-          <input
+          <PasswordField
             id="settings-current-password"
-            type="password"
-            className="settings__input"
+            inputClassName="settings__input"
             value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.currentTarget.value)}
+            onChange={setCurrentPassword}
             disabled={passwordBusy}
           />
           <label className="settings__label" htmlFor="settings-new-password">
             Новый пароль
           </label>
-          <input
+          <PasswordField
             id="settings-new-password"
-            type="password"
-            className="settings__input"
+            inputClassName="settings__input"
             value={newPassword}
-            onChange={(e) => setNewPassword(e.currentTarget.value)}
+            onChange={setNewPassword}
             disabled={passwordBusy}
           />
           <label className="settings__label" htmlFor="settings-confirm-password">
             Повторите новый пароль
           </label>
-          <input
+          <PasswordField
             id="settings-confirm-password"
-            type="password"
-            className="settings__input"
+            inputClassName="settings__input"
             value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+            onChange={setConfirmPassword}
             disabled={passwordBusy}
           />
           <div className="settings__row">
@@ -685,40 +683,37 @@ export function Settings({
           <label className="settings__label" htmlFor="settings-pin-master-password">
             Текущий мастер-пароль
           </label>
-          <input
+          <PasswordField
             id="settings-pin-master-password"
-            type="password"
-            className="settings__input"
+            inputClassName="settings__input"
             value={pinMasterPassword}
-            onChange={(e) => setPinMasterPassword(e.currentTarget.value)}
+            onChange={setPinMasterPassword}
             disabled={pinBusy}
           />
           <label className="settings__label" htmlFor="settings-pin-value">
             {pinConfigured ? "Новый PIN-код" : "PIN-код"}
           </label>
-          <input
+          <PasswordField
             id="settings-pin-value"
-            type="password"
             inputMode="numeric"
-            autoComplete="off"
             maxLength={PIN_MAX_LENGTH}
-            className="settings__input settings__input--narrow"
+            className="settings__field--narrow"
+            inputClassName="settings__input"
             value={pinValue}
-            onChange={(e) => setPinValue(e.currentTarget.value.replace(/\D/g, ""))}
+            onChange={(next) => setPinValue(next.replace(/\D/g, ""))}
             disabled={pinBusy}
           />
           <label className="settings__label" htmlFor="settings-pin-confirm">
             Повторите PIN-код
           </label>
-          <input
+          <PasswordField
             id="settings-pin-confirm"
-            type="password"
             inputMode="numeric"
-            autoComplete="off"
             maxLength={PIN_MAX_LENGTH}
-            className="settings__input settings__input--narrow"
+            className="settings__field--narrow"
+            inputClassName="settings__input"
             value={pinConfirmValue}
-            onChange={(e) => setPinConfirmValue(e.currentTarget.value.replace(/\D/g, ""))}
+            onChange={(next) => setPinConfirmValue(next.replace(/\D/g, ""))}
             disabled={pinBusy}
           />
           <div className="settings__row">

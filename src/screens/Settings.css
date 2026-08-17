@@ -113,6 +113,14 @@
   max-width: 120px;
 }
 
+/* То же сужение, но для обёртки `PasswordField` - у полей PIN ограничивать
+   надо внешний блок, иначе кнопка «показать» уедет к правому краю формы,
+   оторвавшись от самого поля. Чуть шире обычного узкого поля: внутри теперь
+   помещается ещё и глаз. */
+.settings__field--narrow {
+  max-width: 168px;
+}
+
 .settings__input:focus-visible {
   outline: var(--focus-ring-w) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);

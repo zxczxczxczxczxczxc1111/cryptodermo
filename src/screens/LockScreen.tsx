@@ -56,6 +56,7 @@ import {
  * маска в CSS, иначе был бы виден квадрат.
  */
 import appIcon from "../../src-tauri/icons/icon.png";
+import { PasswordField } from "../components/PasswordField";
 import "../tokens.css";
 import "./LockScreen.css";
 
@@ -332,24 +333,31 @@ export async function submitPinSetup(params: {
  * истекла. `now` - параметр, не `Date.now()` внутри, тот же принцип
  * тестируемости, что и у `isPinLockedOut` в `pinLock.ts`. */
 /**
- * Сколько ячеек PIN показать при уже введённых `entered` цифрах.
+ * Сколько ячеек PIN показать.
  *
  * Длина PIN нигде не хранится и не показывается - это решение пользователя,
  * и оно снимает сразу три вещи: подсказку атакующему (зная длину, перебор
  * дешевеет примерно в сто раз), правки в четырёх точках записи настроек и
  * миграцию существующих баз.
  *
- * Поэтому ячейки растут по мере ввода. Начинают с `PIN_MIN_LENGTH`, а не с
- * одной: PIN короче четырёх цифр всё равно невозможен, и показывать одну
- * ячейку означало бы обещать то, чего нельзя ввести. Дальше на каждую
- * введённую цифру добавляется следующая пустая - до `PIN_MAX_LENGTH`.
+ * Ячейки поэтому растут по мере ввода, начиная с `PIN_MIN_LENGTH`: PIN короче
+ * четырёх цифр невозможен, и показывать одну ячейку значило бы обещать то,
+ * чего нельзя ввести.
  *
- * Побочный эффект, который здесь важен: по числу ячеек нельзя прочитать длину
- * чужого PIN, потому что оно зависит только от того, сколько цифр набрано
- * прямо сейчас.
+ * Растут они не «на цифру вперёд», а по факту неудачи. Пользователь заметил
+ * 17.08.2026, что верный четырёхзначный PIN на последней цифре успевал
+ * дорисовать пятую, пустую ячейку - экран будто просил ещё цифру, которой нет.
+ * Причина была в том, что счёт шёл от `entered + 1`, то есть следующая ячейка
+ * появлялась ДО того, как выяснится, что набранного не хватило. Теперь
+ * `probedLength` - длина, на которой тихая попытка уже провалилась, и только
+ * она открывает следующую ячейку.
+ *
+ * Свойство «по числу ячеек не прочитать чужой PIN» сохраняется: количество
+ * по-прежнему зависит только от происходящего прямо сейчас, а не от того, что
+ * записано в базе.
  */
-export function visiblePinCellCount(entered: number): number {
-  const grown = Math.max(PIN_MIN_LENGTH, entered + 1);
+export function visiblePinCellCount(entered: number, probedLength = 0): number {
+  const grown = Math.max(PIN_MIN_LENGTH, entered, probedLength + 1);
   return Math.min(grown, PIN_MAX_LENGTH);
 }
 
@@ -893,6 +901,14 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
   const [pinLockoutState, setPinLockoutState] = useState<PinLockoutState | undefined>(undefined);
   const [pinSetupOffered, setPinSetupOffered] = useState(false);
   const [pinValue, setPinValue] = useState("");
+  /**
+   * Длина PIN, на которой тихая попытка уже провалилась - именно она открывает
+   * следующую пустую ячейку (см. `visiblePinCellCount`). Без неё ячейка
+   * появлялась «на цифру вперёд», и верный четырёхзначный PIN на последней
+   * цифре успевал дорисовать пятую, ненужную (найдено пользователем
+   * 17.08.2026).
+   */
+  const [pinProbedLength, setPinProbedLength] = useState(0);
   /** Короткая дрожь ячеек при засчитанной ошибке. */
   const [pinShake, setPinShake] = useState(false);
   const pinInputRef = useRef<HTMLInputElement>(null);
@@ -1120,12 +1136,19 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
       });
       if (result.ok || !isCurrent()) return;
 
-      if (!opts.counted) return; // тихая неудача - молчим, ввод продолжается
+      if (!opts.counted) {
+        // Тихая неудача: ничего не показываем, ввод продолжается. Но именно
+        // сейчас стало известно, что набранного не хватило - открываем
+        // следующую пустую ячейку (см. `visiblePinCellCount`).
+        setPinProbedLength((prev) => Math.max(prev, pin.length));
+        return;
+      }
 
       const now = new Date();
       const nextLockout = recordFailedPinAttempt(pinLockoutState, now);
       setPinLockoutState(nextLockout);
       setPinValue("");
+      setPinProbedLength(0);
       setPinShake(true);
       window.setTimeout(() => setPinShake(false), PIN_SHAKE_MS);
       updateSettings(activePath, { pinLockout: nextLockout }).catch((err) => {
@@ -1152,6 +1175,9 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
    */
   function handlePinChange(next: string) {
     setPinValue(next);
+    // Поле стёрли целиком - человек начинает заново, и ячейки должны
+    // вернуться к минимуму, а не хранить память о прошлых неудачах.
+    if (next === "") setPinProbedLength(0);
     if (error) setError(null);
     if (pinTimerRef.current !== null) clearTimeout(pinTimerRef.current);
     if (!shouldAttemptPinUnlock(next)) return;
@@ -1400,6 +1426,7 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
     setError(null);
     setPassword("");
     setPinValue("");
+    setPinProbedLength(0);
     setPhase("pinEntry");
   }
 
@@ -1572,7 +1599,7 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
                 autoFocus
                 disabled={busy}
               />
-              {Array.from({ length: visiblePinCellCount(pinValue.length) }, (_, i) => (
+              {Array.from({ length: visiblePinCellCount(pinValue.length, pinProbedLength) }, (_, i) => (
                 <span
                   key={i}
                   aria-hidden="true"
@@ -1643,42 +1670,52 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
             <label className="lock-screen__label" htmlFor="lock-screen-pin-setup">
               Новый PIN-код
             </label>
-            <input
+            <PasswordField
               id="lock-screen-pin-setup"
-              type="password"
               inputMode="numeric"
-              autoComplete="off"
               maxLength={PIN_MAX_LENGTH}
-              className="lock-screen__input lock-screen__input--pin"
+              inputClassName="lock-screen__input lock-screen__input--pin"
               value={pinSetupValue}
-              onChange={(e) => setPinSetupValue(e.currentTarget.value.replace(/\D/g, ""))}
+              onChange={(next) => setPinSetupValue(next.replace(/\D/g, ""))}
               autoFocus
               disabled={busy}
             />
             <label className="lock-screen__label" htmlFor="lock-screen-pin-setup-confirm">
               Повторите PIN-код
             </label>
-            <input
+            <PasswordField
               id="lock-screen-pin-setup-confirm"
-              type="password"
               inputMode="numeric"
-              autoComplete="off"
               maxLength={PIN_MAX_LENGTH}
-              className="lock-screen__input lock-screen__input--pin"
+              inputClassName="lock-screen__input lock-screen__input--pin"
               value={pinSetupConfirm}
-              onChange={(e) => setPinSetupConfirm(e.currentTarget.value.replace(/\D/g, ""))}
+              onChange={(next) => setPinSetupConfirm(next.replace(/\D/g, ""))}
               disabled={busy}
             />
-            <button
-              type="submit"
-              className="lock-screen__submit"
-              disabled={busy || pinSetupValue.length === 0 || pinSetupConfirm.length === 0}
-            >
-              {busy ? DERIVING_LABEL : "Сохранить PIN"}
-            </button>
-            <button type="button" className="lock-screen__recover" onClick={handleSkipPinSetup} disabled={busy}>
-              Пропустить
-            </button>
+            {/*
+              Обе кнопки - одной строкой и одной высоты. Раньше «Сохранить PIN»
+              растягивался на всю карточку, а «Пропустить» висел под ним
+              маленьким прямоугольником у левого края: две разные ширины, два
+              разных края, лесенка на ровном месте (замечено пользователем
+              17.08.2026).
+            */}
+            <div className="lock-screen__form-actions">
+              <button
+                type="button"
+                className="lock-screen__secondary"
+                onClick={handleSkipPinSetup}
+                disabled={busy}
+              >
+                Пропустить
+              </button>
+              <button
+                type="submit"
+                className="lock-screen__submit lock-screen__submit--grow"
+                disabled={busy || pinSetupValue.length === 0 || pinSetupConfirm.length === 0}
+              >
+                {busy ? DERIVING_LABEL : "Сохранить PIN"}
+              </button>
+            </div>
             {error && (
               <p className="lock-screen__error" role="alert">
                 {error}
@@ -1692,12 +1729,11 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
             <label className="lock-screen__label" htmlFor="lock-screen-password">
               Мастер-пароль
             </label>
-            <input
+            <PasswordField
               id="lock-screen-password"
-              type="password"
-              className="lock-screen__input"
+              inputClassName="lock-screen__input"
               value={password}
-              onChange={(e) => setPassword(e.currentTarget.value)}
+              onChange={setPassword}
               autoFocus
               disabled={busy}
             />
@@ -1748,24 +1784,22 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
             <label className="lock-screen__label" htmlFor="lock-screen-password">
               Новый мастер-пароль
             </label>
-            <input
+            <PasswordField
               id="lock-screen-password"
-              type="password"
-              className="lock-screen__input"
+              inputClassName="lock-screen__input"
               value={password}
-              onChange={(e) => setPassword(e.currentTarget.value)}
+              onChange={setPassword}
               autoFocus
               disabled={busy}
             />
             <label className="lock-screen__label" htmlFor="lock-screen-password-confirm">
               Повторите пароль
             </label>
-            <input
+            <PasswordField
               id="lock-screen-password-confirm"
-              type="password"
-              className="lock-screen__input"
+              inputClassName="lock-screen__input"
               value={passwordConfirm}
-              onChange={(e) => setPasswordConfirm(e.currentTarget.value)}
+              onChange={setPasswordConfirm}
               disabled={busy}
             />
             {passwordsMismatch && (

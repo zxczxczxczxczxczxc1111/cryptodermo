@@ -15,7 +15,7 @@ vi.mock("../lib/tauriApi", () => ({
 import { readVault, writeVaultAtomic, listBackups, rotateBackups } from "../lib/tauriApi";
 import { VaultStore } from "../lib/vaultStore";
 import { parseContainer } from "../lib/vaultFormat";
-import { setUpPin, PIN_LOCKOUT_DURATION_MS, type PinWrap } from "../lib/pinLock";
+import { setUpPin, PIN_LOCKOUT_DURATION_MS, PIN_MIN_LENGTH, PIN_MAX_LENGTH, type PinWrap } from "../lib/pinLock";
 import {
   checkExistingVault,
   submitUnlock,
@@ -25,6 +25,7 @@ import {
   submitPinSetup,
   pinLockoutRemainingMs,
   formatPinLockoutMessage,
+  visiblePinCellCount,
   UNLOCK_ERROR_MESSAGE,
   CREATE_SAVE_ERROR_MESSAGE,
   PASSWORD_MISMATCH_MESSAGE,
@@ -513,5 +514,30 @@ describe("pinLockoutRemainingMs / formatPinLockoutMessage", () => {
     expect(formatPinLockoutMessage(10 * 60_000)).toBe("Слишком много попыток. Попробуйте через 10 мин.");
     expect(formatPinLockoutMessage(30_000)).toBe("Слишком много попыток. Попробуйте через 1 мин.");
     expect(formatPinLockoutMessage(1)).toBe("Слишком много попыток. Попробуйте через 1 мин.");
+  });
+});
+
+describe("visiblePinCellCount", () => {
+  it("shows the minimum length before anything is typed", () => {
+    expect(visiblePinCellCount(0, 0)).toBe(PIN_MIN_LENGTH);
+    expect(visiblePinCellCount(2, 0)).toBe(PIN_MIN_LENGTH);
+  });
+
+  it("does NOT show an extra cell while the minimum-length PIN is still being checked", () => {
+    // Именно это пользователь увидел 17.08.2026: верный четырёхзначный PIN на
+    // последней цифре успевал дорисовать пятую, пустую ячейку - экран просил
+    // цифру, которой нет.
+    expect(visiblePinCellCount(PIN_MIN_LENGTH, 0)).toBe(PIN_MIN_LENGTH);
+  });
+
+  it("opens the next cell only after an attempt of that length has failed", () => {
+    expect(visiblePinCellCount(PIN_MIN_LENGTH, PIN_MIN_LENGTH)).toBe(PIN_MIN_LENGTH + 1);
+    expect(visiblePinCellCount(PIN_MIN_LENGTH + 1, PIN_MIN_LENGTH)).toBe(PIN_MIN_LENGTH + 1);
+    expect(visiblePinCellCount(PIN_MIN_LENGTH + 1, PIN_MIN_LENGTH + 1)).toBe(PIN_MIN_LENGTH + 2);
+  });
+
+  it("never exceeds the maximum length", () => {
+    expect(visiblePinCellCount(PIN_MAX_LENGTH, PIN_MAX_LENGTH)).toBe(PIN_MAX_LENGTH);
+    expect(visiblePinCellCount(PIN_MAX_LENGTH + 3, PIN_MAX_LENGTH + 3)).toBe(PIN_MAX_LENGTH);
   });
 });

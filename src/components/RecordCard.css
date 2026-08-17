@@ -287,6 +287,18 @@
   transition: background var(--transition), color var(--transition), border-color var(--transition);
 }
 
+/* Кнопка-иконка вместо подписи (глаз, копирование). Квадратная и одинаковая
+   во всех строках: раньше «ПОКАЗАТЬ» и «КОПИРОВАТЬ» имели разную ширину, и
+   правый край строки прыгал от поля к полю. */
+.record-card__field-btn--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+}
+
 .record-card__field-btn:hover {
   background: var(--surface-hover);
   color: var(--text);

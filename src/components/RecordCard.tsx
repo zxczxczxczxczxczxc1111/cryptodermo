@@ -5,6 +5,7 @@ import type { Attachment, Item, ItemField, ItemType, VaultStore } from "../lib/v
 import { writeVaultAtomic } from "../lib/tauriApi";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { StatusDot } from "./StatusDot";
+import { EyeIcon, CopyIcon, CheckIcon } from "./icons";
 import {
   previewKindFor,
   imageDataUrl,
@@ -138,6 +139,23 @@ export interface RecordCardProps {
 type Tab = "fields" | "history";
 
 const SECRET_MASK = "••••••••";
+
+/*
+ * Подписи кнопок значения переехали в `aria-label`/`title`.
+ *
+ * Раньше это были широкие капслочные кнопки «ПОКАЗАТЬ» и «КОПИРОВАТЬ», и в
+ * строке из трёх полей они забирали больше места, чем сами значения
+ * (пользователь назвал их «огромными» 17.08.2026). Иконки читаются с одного
+ * взгляда и стоят одинаково во всех строках, а текст никуда не делся: он в
+ * подсказке при наведении и в имени кнопки для экранной читалки.
+ *
+ * Подтверждение копирования при этом двойное - галочка вместо иконки и живая
+ * область `aria-live` ниже по разметке: смену иконки читалки не замечают.
+ */
+const COPY_LABEL = "Копировать";
+const COPIED_LABEL = "Скопировано";
+const REVEAL_SHOW_LABEL = "Показать";
+const REVEAL_HIDE_LABEL = "Скрыть";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("ru-RU", {
@@ -441,10 +459,13 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                   {field.secret && (
                     <button
                       type="button"
-                      className="record-card__field-btn"
+                      className="record-card__field-btn record-card__field-btn--icon"
                       onClick={() => toggleReveal(field.name)}
+                      aria-pressed={isRevealed}
+                      aria-label={isRevealed ? REVEAL_HIDE_LABEL : REVEAL_SHOW_LABEL}
+                      title={isRevealed ? REVEAL_HIDE_LABEL : REVEAL_SHOW_LABEL}
                     >
-                      {isRevealed ? "Скрыть" : "Показать"}
+                      <EyeIcon off={isRevealed} />
                     </button>
                   )}
                   {/*
@@ -462,12 +483,14 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                   <button
                     type="button"
                     className={
-                      "record-card__field-btn" +
+                      "record-card__field-btn record-card__field-btn--icon" +
                       (copiedField === field.name ? " record-card__field-btn--copied" : "")
                     }
                     onClick={() => handleCopy(field)}
+                    aria-label={copiedField === field.name ? COPIED_LABEL : COPY_LABEL}
+                    title={copiedField === field.name ? COPIED_LABEL : COPY_LABEL}
                   >
-                    {copiedField === field.name ? "Скопировано" : "Копировать"}
+                    {copiedField === field.name ? <CheckIcon /> : <CopyIcon />}
                   </button>
                 </div>
               </div>
@@ -589,10 +612,13 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                       </span>
                       <button
                         type="button"
-                        className="record-card__field-btn"
+                        className="record-card__field-btn record-card__field-btn--icon"
                         onClick={() => toggleHistoryReveal(key)}
+                        aria-pressed={shown}
+                        aria-label={shown ? REVEAL_HIDE_LABEL : REVEAL_SHOW_LABEL}
+                        title={shown ? REVEAL_HIDE_LABEL : REVEAL_SHOW_LABEL}
                       >
-                        {shown ? "Скрыть" : "Показать"}
+                        <EyeIcon off={shown} />
                       </button>
                     </div>
                   );

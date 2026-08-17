@@ -278,10 +278,48 @@
 /* Поле ввода PIN (фича PIN-кода) - короче обычного поля пароля (задание:
    "короткое поле") и с разрядкой цифр для читаемости кода, тот же
    моноширинный шрифт/токены, что и у .lock-screen__input. */
+/*
+ * Ширина у поля PIN теперь общая с остальными полями формы.
+ *
+ * Раньше стоял `max-width: 140px` («короткое поле» из исходного задания), и на
+ * карточке настройки PIN получалась лесенка: два узких поля, под ними кнопка
+ * во всю ширину, под ней ещё одна, поменьше. Четыре разные ширины подряд -
+ * ровно то, что пользователь назвал «кнопки стоят криво» 17.08.2026.
+ * Читаемость кода держат разрядка и центрирование, а не узость поля.
+ */
 .lock-screen__input--pin {
-  max-width: 140px;
   letter-spacing: 6px;
   text-align: center;
+}
+
+/* Кнопки формы одной строкой: главная тянется, вторичная по содержимому.
+   Обе одной высоты и с общим правым/левым краем формы. */
+.lock-screen__form-actions {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: stretch;
+}
+
+.lock-screen__submit--grow {
+  flex: 1;
+}
+
+/* Вторичное действие рядом с главной кнопкой. Отличается от
+   `.lock-screen__recover` тем, что не прижимается к левому краю: тот живёт
+   внутри блока ошибки, а этот - в одной строке с главной кнопкой. */
+.lock-screen__secondary {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  cursor: pointer;
+}
+
+.lock-screen__secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
 }
 
 .lock-screen__submit {

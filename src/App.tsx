@@ -542,7 +542,7 @@ function App() {
       return await save({
         title: "Выбрать расположение базы",
         defaultPath: "vault.dat",
-        filters: [{ name: "Vault", extensions: ["dat"] }],
+        filters: [{ name: "cryptodermo", extensions: ["dat"] }],
       });
     } catch (err) {
       console.error("App: не удалось открыть системный диалог выбора пути", err);

@@ -142,7 +142,7 @@ export function ImportExportPanel({
       path = await save({
         title: "Сохранить копию базы",
         defaultPath: buildManualCopyFilename(now()),
-        filters: [{ name: "Vault", extensions: ["dat"] }],
+        filters: [{ name: "cryptodermo", extensions: ["dat"] }],
       });
     } catch (err) {
       reportError(DIALOG_OPEN_FAILED_MESSAGE, err);

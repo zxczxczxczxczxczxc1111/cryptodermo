@@ -1,5 +1,5 @@
 [package]
-name = "vault"
+name = "cryptodermo"
 version = "0.1.0"
 description = "Личное зашифрованное офлайн-хранилище записей"
 authors = ["you"]
@@ -11,7 +11,7 @@ edition = "2021"
 # Суффикс `_lib` не для красоты: без него имя библиотеки совпадает с именем
 # бинарника, а на Windows это конфликт при сборке (см.
 # https://github.com/rust-lang/cargo/issues/8519).
-name = "vault_lib"
+name = "cryptodermo_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

@@ -425,6 +425,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cryptodermo"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "cssparser"
 version = "0.36.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3784,17 +3795,6 @@ dependencies = [
  "js-sys",
  "serde_core",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "vault"
-version = "0.1.0"
-dependencies = [
- "serde",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "thiserror 2.0.20",
 ]
 
 [[package]]

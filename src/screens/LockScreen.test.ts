@@ -22,6 +22,15 @@ import {
   UNLOCK_ERROR_MESSAGE,
   CREATE_SAVE_ERROR_MESSAGE,
   PASSWORD_MISMATCH_MESSAGE,
+  NETWORK_NODE_COUNT,
+  SUCCESS_DISPERSE_MS,
+  nodePositionAt,
+  generateNodeSeeds,
+  disperseProgress,
+  disruptConnectionStrength,
+  stepIntensity,
+  isMotionAllowed,
+  type NetworkNodeSeed,
 } from "./LockScreen";
 
 const readVaultMock = vi.mocked(readVault);
@@ -227,5 +236,139 @@ describe("submitRecovery (R114i - открыть последнюю рабочу
 
     expect(result).toEqual({ ok: false, message: UNLOCK_ERROR_MESSAGE });
     expect(onUnlock).not.toHaveBeenCalled();
+  });
+});
+
+describe("nodePositionAt (позиции узлов сети - R73)", () => {
+  // Seed с "круглыми" частотами - на выбранных t угол w*t+phase попадает
+  // ровно в 0/pi/2/pi точно, значения синуса известны без вычислений (0, 1,
+  // 0, -1) - посчитано вручную по формуле из JSDoc функции, не получено
+  // вызовом самой nodePositionAt.
+  const seed: NetworkNodeSeed = {
+    cx: 0.5,
+    cy: 0.4,
+    rx1: 0.1,
+    ry1: 0.08,
+    rx2: 0.02,
+    ry2: 0.01,
+    wx1: Math.PI / 2000,
+    wy1: Math.PI / 2000,
+    wx2: Math.PI / 1000,
+    wy2: Math.PI / 1000,
+    px1: 0,
+    py1: Math.PI / 2,
+    px2: Math.PI / 2,
+    py2: 0,
+  };
+
+  it("at t=0 equals cx/cy plus the sine of each harmonic's own phase", () => {
+    // x = 0.5 + 0.1*sin(0) + 0.02*sin(pi/2) = 0.5 + 0 + 0.02 = 0.52
+    // y = 0.4 + 0.08*sin(pi/2) + 0.01*sin(0) = 0.4 + 0.08 + 0 = 0.48
+    const pos = nodePositionAt(seed, 0);
+    expect(pos.x).toBeCloseTo(0.52, 6);
+    expect(pos.y).toBeCloseTo(0.48, 6);
+  });
+
+  it("at t=1000ms both harmonics land on clean angles (pi/2 and pi) and shift accordingly", () => {
+    // wx1*1000=pi/2 (+px1=0) -> sin=1;  wx2*1000=pi (+px2=pi/2) -> sin(3pi/2)=-1
+    // x = 0.5 + 0.1*1 + 0.02*(-1) = 0.58
+    // wy1*1000=pi/2 (+py1=pi/2) -> sin(pi)=0;  wy2*1000=pi (+py2=0) -> sin(pi)=0
+    // y = 0.4 + 0.08*0 + 0.01*0 = 0.4
+    const pos = nodePositionAt(seed, 1000);
+    expect(pos.x).toBeCloseTo(0.58, 6);
+    expect(pos.y).toBeCloseTo(0.4, 6);
+  });
+});
+
+describe("generateNodeSeeds (R80 - число узлов - именованная константа)", () => {
+  it("creates exactly as many seeds as requested by NETWORK_NODE_COUNT", () => {
+    expect(generateNodeSeeds(NETWORK_NODE_COUNT)).toHaveLength(NETWORK_NODE_COUNT);
+  });
+
+  it("is driven entirely by its count argument, not a hardcoded number", () => {
+    // Критерий приёмки: "уменьшение константы видимо снижает нагрузку без
+    // правки остальной логики" - это возможно только если сам генератор (и
+    // через него весь перебор соединений в drawFrame) ничего не хардкодит.
+    expect(generateNodeSeeds(5)).toHaveLength(5);
+    expect(generateNodeSeeds(1)).toHaveLength(1);
+  });
+});
+
+describe("disperseProgress (успешная разблокировка - R76, 400ms из спецификации §16)", () => {
+  it("uses exactly 400ms, per the spec's literal wording", () => {
+    expect(SUCCESS_DISPERSE_MS).toBe(400);
+  });
+
+  it("starts fully assembled and visible (spread 0, opacity 1)", () => {
+    expect(disperseProgress(0, 400)).toEqual({ spread: 0, opacity: 1 });
+  });
+
+  it("ends fully dispersed and invisible (spread 1, opacity 0) exactly at the duration", () => {
+    expect(disperseProgress(400, 400)).toEqual({ spread: 1, opacity: 0 });
+  });
+
+  it("does not extrapolate past the end state when a frame lands after the duration", () => {
+    // rAF почти никогда не попадает ровно в 400ms - кадр на 600ms должен
+    // выглядеть так же, как кадр ровно на 400ms, не "перелетать" дальше.
+    expect(disperseProgress(600, 400)).toEqual({ spread: 1, opacity: 0 });
+  });
+
+  it("follows easeOutCubic/easeInCubic at the midpoint", () => {
+    // t=0.5: spread = 1-(1-0.5)^3 = 1-0.125 = 0.875; opacity = 1-0.5^3 = 0.875
+    expect(disperseProgress(200, 400)).toEqual({ spread: 0.875, opacity: 0.875 });
+  });
+});
+
+describe("disruptConnectionStrength (неверный пароль - R77, сеть теряет связи и собирается заново)", () => {
+  it("starts fully connected the instant the error fires", () => {
+    expect(disruptConnectionStrength(0, 1000)).toBeCloseTo(1, 6);
+  });
+
+  it("drops to fully disconnected at the midpoint - 'теряет связи'", () => {
+    // t=0.5 -> 1 - sin(pi/2) = 1 - 1 = 0
+    expect(disruptConnectionStrength(500, 1000)).toBeCloseTo(0, 6);
+  });
+
+  it("is fully reconnected again by the end of the duration - 'собирается заново'", () => {
+    // t=1 -> 1 - sin(pi) = 1 - 0 = 1
+    expect(disruptConnectionStrength(1000, 1000)).toBeCloseTo(1, 6);
+  });
+
+  it("does not stay disconnected past the duration", () => {
+    expect(disruptConnectionStrength(1500, 1000)).toBeCloseTo(1, 6);
+  });
+});
+
+describe("stepIntensity (R75 - плавный переход скорости/плотности сети при busy)", () => {
+  it("matches the textbook exponential smoothing formula at dt == smoothingMs", () => {
+    // decay = e^-1 = 0.36787944117144233 (табличная константа, не вычислена
+    // вызовом функции под тестом)
+    // next = target + (current-target)*decay = 3 + (1-3)*0.36787944117144233
+    //      = 3 - 0.73575888234288466 = 2.26424111765711534
+    const next = stepIntensity(1, 3, 250, 250);
+    expect(next).toBeCloseTo(2.264241, 6);
+  });
+
+  it("returns the current value unchanged when no time has passed", () => {
+    expect(stepIntensity(0.42, 1, 0, 250)).toBeCloseTo(0.42, 9);
+  });
+
+  it("snaps instantly to the target when smoothing is disabled (smoothingMs <= 0)", () => {
+    expect(stepIntensity(0, 1, 16, 0)).toBe(1);
+  });
+});
+
+describe("isMotionAllowed (prefers-reduced-motion - R78)", () => {
+  it("disallows animation when the media query matches (reduce)", () => {
+    expect(isMotionAllowed(true)).toBe(false);
+  });
+
+  it("allows animation when the media query does not match", () => {
+    expect(isMotionAllowed(false)).toBe(true);
+  });
+
+  it("defaults to allowing animation when the preference could not be read", () => {
+    expect(isMotionAllowed(undefined)).toBe(true);
+    expect(isMotionAllowed(null)).toBe(true);
   });
 });

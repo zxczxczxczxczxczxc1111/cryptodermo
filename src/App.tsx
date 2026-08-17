@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { QuickPalette } from "./components/QuickPalette";
 import { useModalFocus } from "./hooks/useModalFocus";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -748,6 +749,12 @@ function App() {
 
   return (
     <>
+      {/* Быстрый поиск по Ctrl+K поверх любого экрана. Живёт снаружи AppShell:
+          это не часть раскладки, а слой над ней. */}
+      <QuickPalette
+        store={store}
+        onOpenItem={(id) => void navigateTo({ kind: "editor", itemId: id })}
+      />
       <AutoLockController
         key={timeoutMs}
         store={store}

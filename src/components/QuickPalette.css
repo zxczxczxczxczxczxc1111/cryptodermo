@@ -1,0 +1,135 @@
+/* Палитра быстрого поиска - см. QuickPalette.tsx. */
+
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  justify-content: center;
+  /* Не по центру экрана, а в верхней трети: так делают все палитры команд, и
+     не случайно - список растёт вниз, и центрированное окно прыгало бы при
+     каждом изменении числа результатов. */
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: var(--scrim);
+  animation: fade-in var(--dur-fast) ease-out;
+}
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: min(560px, 92vw);
+  max-height: 60vh;
+  padding: var(--sp-3);
+  border-radius: var(--r-card);
+  border: var(--border-w) solid var(--border-strong);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font-family: var(--font-ui);
+  animation: rise-in var(--dur) ease-out;
+}
+
+.palette__input {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-lg);
+}
+
+.palette__input:focus-visible {
+  outline: none;
+  border-color: var(--border-active);
+}
+
+.palette__results {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.palette__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+}
+
+.palette__row--active {
+  background: var(--surface-hover);
+}
+
+.palette__row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+}
+
+.palette__row-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  /* Кнопки только на выбранной строке - иначе список превращается в панель. */
+  opacity: 0;
+}
+
+.palette__row--active .palette__row-actions {
+  opacity: 1;
+}
+
+.palette__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 var(--sp-2);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-chip);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.palette__btn:hover {
+  background: var(--surface-selected);
+  color: var(--text-strong);
+}
+
+.palette__btn--icon {
+  padding: 0;
+}
+
+.palette__empty {
+  padding: var(--sp-3);
+  color: var(--text-faint);
+  font-size: var(--fs-md);
+}
+
+.palette__hint {
+  flex: none;
+  margin: 0;
+  padding-top: var(--sp-1);
+  color: var(--text-faint);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.palette__hint--copied {
+  color: var(--text);
+}

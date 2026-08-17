@@ -26,4 +26,5 @@ serde = { version = "1", features = ["derive"] }
 # ошибок команд (https://v2.tauri.app/develop/calling-rust/#error-handling).
 thiserror = "2"
 tauri-plugin-opener = "2.5.4"
+tauri-plugin-global-shortcut = "2.3.2"
 

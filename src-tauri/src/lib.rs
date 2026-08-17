@@ -11,6 +11,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // Глобальное сочетание регистрируется на стороне фронта: там же лежит
+        // и настройка, и решение, что делать по нажатию.
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             vault_fs::read_vault,
             vault_fs::write_vault_atomic,

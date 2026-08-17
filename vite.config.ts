@@ -58,6 +58,10 @@ export default defineConfig(async ({ mode }) => ({
             { find: /^@tauri-apps\/api\/window$/, replacement: mockModulePath("window") },
             { find: /^@tauri-apps\/plugin-dialog$/, replacement: mockModulePath("dialog") },
             { find: /^@tauri-apps\/plugin-opener$/, replacement: mockModulePath("opener") },
+            {
+              find: /^@tauri-apps\/plugin-global-shortcut$/,
+              replacement: mockModulePath("global-shortcut"),
+            },
           ],
         }
       : undefined,

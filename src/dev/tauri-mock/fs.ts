@@ -130,6 +130,24 @@ function fixtureItems(): NewItemInput[] {
       note: "",
     },
     {
+      type: "note",
+      title: "Договор аренды",
+      tags: ["Личное", "Финансы"],
+      fields: [],
+      note: "Скан договора приложен файлом.",
+      // Вложение нужно фикстуре, чтобы раздел «Вложения» в сайдбаре был не
+      // пустым: без него фильтр по наличию вложений нечем проверить.
+      attachments: [
+        {
+          id: "fixture-attachment-1",
+          name: "dogovor.txt",
+          mimeType: "text/plain",
+          size: 32,
+          data: btoa("Fixture attachment contents, 32b."),
+        },
+      ],
+    },
+    {
       type: "other",
       title: "Лицензия на редактор",
       tags: ["Работа"],

@@ -49,13 +49,25 @@ import "./App.css";
  * `List.tsx` для своей карточки).
  */
 export type Screen =
-  | { kind: "list"; typeFilter?: ItemType }
+  | { kind: "list"; typeFilter?: ItemType; withAttachments?: boolean }
   | { kind: "editor"; itemId: string | null }
   | { kind: "settings" };
 
 const SIDEBAR_LIST_ID = "list";
 /** Префикс id пунктов-фильтров по типу записи: `type:login` и т.п. */
 const SIDEBAR_TYPE_PREFIX = "type:";
+/**
+ * Раздел «Вложения».
+ *
+ * Это НЕ тип записи и не может им быть: `attachments` - поле, которое есть у
+ * записи любого типа, и пароль с прикреплённым файлом существует прямо
+ * сейчас. Добавить «вложение» в перечень типов означало бы утверждать, что
+ * запись бывает «паролем ИЛИ вложением».
+ *
+ * Поэтому это фильтр по наличию вложений, ровно такой же механизм, что и у
+ * типов. Формат базы не затронут.
+ */
+const SIDEBAR_ATTACHMENTS_ID = "filter:attachments";
 const SIDEBAR_SETTINGS_ID = "settings";
 
 /**
@@ -66,6 +78,7 @@ const SIDEBAR_SETTINGS_ID = "settings";
  */
 export function screenForSidebarId(id: string): Screen {
   if (id === SIDEBAR_SETTINGS_ID) return { kind: "settings" };
+  if (id === SIDEBAR_ATTACHMENTS_ID) return { kind: "list", withAttachments: true };
   if (id.startsWith(SIDEBAR_TYPE_PREFIX)) {
     return { kind: "list", typeFilter: id.slice(SIDEBAR_TYPE_PREFIX.length) as ItemType };
   }
@@ -81,6 +94,7 @@ export function screenForSidebarId(id: string): Screen {
  */
 export function sidebarIdForScreen(screen: Screen): string {
   if (screen.kind === "editor") return SIDEBAR_LIST_ID;
+  if (screen.kind === "list" && screen.withAttachments) return SIDEBAR_ATTACHMENTS_ID;
   if (screen.kind === "list" && screen.typeFilter) {
     return `${SIDEBAR_TYPE_PREFIX}${screen.typeFilter}`;
   }
@@ -659,11 +673,24 @@ function App() {
   }, {});
 
   const activeTypeFilter = screen.kind === "list" ? screen.typeFilter : undefined;
+  const withAttachmentsCount = allItems.filter((i) => i.attachments.length > 0).length;
 
   const sidebarSections: SidebarSection[] = [
     {
       items: [
         { id: SIDEBAR_LIST_ID, label: "Все записи", count: allItems.length, icon: "all" },
+        // Показывается только когда вложения вообще есть - по тому же правилу,
+        // что и типы с нулём.
+        ...(withAttachmentsCount > 0 || (screen.kind === "list" && screen.withAttachments)
+          ? [
+              {
+                id: SIDEBAR_ATTACHMENTS_ID,
+                label: "Вложения",
+                count: withAttachmentsCount,
+                icon: "attachment",
+              },
+            ]
+          : []),
       ],
     },
     {
@@ -720,6 +747,7 @@ function App() {
             store={store}
             vaultPath={vaultPath}
             typeFilter={screen.typeFilter}
+            withAttachments={screen.withAttachments}
             onOpenItem={(id) => void navigateTo({ kind: "editor", itemId: id })}
             onCreateNew={() => void navigateTo({ kind: "editor", itemId: null })}
             onStoreChanged={bumpDataVersion}

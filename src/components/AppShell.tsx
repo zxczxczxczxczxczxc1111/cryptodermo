@@ -89,6 +89,11 @@ const ICON_PATHS: Record<string, ReactNode> = {
       <path d="M12 8v4l3 2" />
     </>
   ),
+  attachment: (
+    <>
+      <path d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10.5 18a2 2 0 0 1-3-3l8-8" />
+    </>
+  ),
   settings: (
     <>
       <circle cx="12" cy="12" r="3" />

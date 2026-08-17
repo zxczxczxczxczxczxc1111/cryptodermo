@@ -53,6 +53,8 @@ export interface ListProps {
    * заметке не должно превращаться в выбор типа.
    */
   typeFilter?: ItemType;
+  /** Показывать только записи, у которых есть вложения. */
+  withAttachments?: boolean;
   /**
    * Стор был изменён прямо внутри этого экрана (сейчас - только удаление
    * вложения из карточки, см. `RecordCard.onAttachmentsChanged`) - сигнал
@@ -151,7 +153,7 @@ function formatRelativeTime(iso: string, now: number): string {
   return `${years} г назад`;
 }
 
-export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged, refreshToken, typeFilter }: ListProps) {
+export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged, refreshToken, typeFilter, withAttachments }: ListProps) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -177,11 +179,24 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
   }, [store, query, refreshToken, full]);
 
   const filtered = useMemo<SearchResult>(() => {
-    if (!typeFilter) return searched;
-    return { items: searched.items.filter((i) => i.type === typeFilter), error: searched.error };
-  }, [searched, typeFilter]);
+    let items = searched.items;
+    if (typeFilter) items = items.filter((i) => i.type === typeFilter);
+    if (withAttachments) items = items.filter((i) => i.attachments.length > 0);
+    return items === searched.items ? searched : { items, error: searched.error };
+  }, [searched, typeFilter, withAttachments]);
 
   const items = filtered.items;
+
+  const detailPlaceholderText =
+    items.length > 0
+      ? "Выберите запись слева, чтобы посмотреть детали."
+      : query.trim() !== ""
+        ? "По этому запросу ничего нет."
+        : withAttachments
+          ? "Записей с вложениями пока нет."
+          : typeFilter
+            ? "Записей этого типа пока нет."
+          : "Здесь появится содержимое выбранной записи.";
 
   /*
    * Автовыбор первой записи.
@@ -211,7 +226,7 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
   useEffect(() => {
     setScrollTop(0);
     if (viewportRef.current) viewportRef.current.scrollTop = 0;
-  }, [query, typeFilter]);
+  }, [query, typeFilter, withAttachments]);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -363,7 +378,16 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
             onDeleted={handleItemDeleted}
           />
         ) : (
-          <div className="list__detail-placeholder">Выберите запись слева, чтобы посмотреть детали.</div>
+          /*
+            Текст зависит от того, ПОЧЕМУ справа пусто.
+            Раньше здесь всегда стояло «Выберите запись слева» - и при пустом
+            поиске это прямо врало: выбирать было нечего, а подсказка
+            отправляла к списку, в котором ноль строк.
+            Когда записи есть, но ни одна не выбрана, состояние практически
+            недостижимо (первая выбирается сама), но текст оставлен: он
+            корректен именно для этого случая.
+          */
+          <div className="list__detail-placeholder">{detailPlaceholderText}</div>
         )}
       </div>
     </div>

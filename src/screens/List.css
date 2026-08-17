@@ -7,7 +7,20 @@
  * var(--...), R60).
  */
 .list {
-  --list-rows-w: 380px;
+  /*
+   * Ширина колонки строк.
+   *
+   * Была жёстко 380px без единого media-запроса, и на 2560 это выглядело
+   * нелепо: список оставался узкой полоской, а карточке доставалось под две
+   * тысячи пикселей пустоты. `clamp` растит колонку вместе с окном и
+   * останавливает рост, когда строка становится длиннее, чем нужно: заголовок
+   * записи всё равно короткий, а бесконечно широкая строка только удлиняет
+   * путь глаза от названия к типу.
+   *
+   * Нижняя граница 320px - меньше строка «Тип · время · теги» уже режется на
+   * многоточие почти всегда.
+   */
+  --list-rows-w: clamp(320px, 28vw, 560px);
 
   display: grid;
   grid-template-columns: var(--list-rows-w) 1fr;
@@ -208,8 +221,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--fs-ui-lg);
-  line-height: var(--lh-ui-lg);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+}
+
+/* Заголовок выбранной строки ярче остальных. В монохроме это единственное,
+   чем можно усилить выделение помимо самой поверхности. */
+.list__row--active .list__row-title {
+  color: var(--text-strong);
+  font-weight: var(--fw-medium);
 }
 
 .list__row-meta {
@@ -217,7 +237,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-dim);
-  font-size: var(--fs-label);
+  font-size: var(--fs-2xs);
+  /* Интерлиньяж задан явно: раньше он оставался `normal`, то есть зависел от
+     шрифта, и вертикальный ритм строки списка держался на удаче. */
+  line-height: var(--lh-2xs);
   letter-spacing: var(--ls-label);
   text-transform: uppercase;
 }

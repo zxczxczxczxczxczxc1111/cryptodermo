@@ -187,6 +187,7 @@
 /* Логин под названием. Сжимается первым и обрезается: длинная почта не должна
    выдавливать название, по которому и ищут. */
 .qwin__row-detail {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -195,7 +196,12 @@
   font-size: var(--fs-sm);
 }
 
+/* Название сжимается последним: обрезать его, оставив логин целиком, значит
+   спрятать именно то, по чему ищут (замечено пользователем 17.08.2026). */
 .qwin__row-title {
-  flex: none;
-  max-width: 55%;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

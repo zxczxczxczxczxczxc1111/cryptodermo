@@ -50,6 +50,16 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<QuickResult[]>([]);
   const [selected, setSelected] = useState(0);
+  /**
+   * Начал ли человек выбирать.
+   *
+   * До первого действия подсветки нет вовсе: при открытии первая строка
+   * выглядела выбранной, хотя человек ничего не выбирал (замечено
+   * пользователем 17.08.2026). Стрелки, наведение мышью и новый запрос
+   * включают её. Enter до этого момента всё равно берёт первую строку -
+   * иначе он бы просто ничего не делал.
+   */
+  const [picking, setPicking] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +94,7 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
     if (!open) return;
     setQuery("");
     setSelected(0);
+    setPicking(false);
     setCopied(null);
     setResults(buildQuickRows(store.search("")).slice(0, MAX_RESULTS));
     // Фокус ставится после отрисовки: до неё поля ещё нет в документе.
@@ -145,12 +156,16 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
     }
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelected((i) => Math.min(results.length - 1, i + 1));
+      // Первая стрелка вниз не двигает выбор, а зажигает его на первой строке:
+      // иначе одно нажатие уводило бы сразу на вторую.
+      setSelected((i) => (picking ? Math.min(results.length - 1, i + 1) : 0));
+      setPicking(true);
       return;
     }
     if (e.key === "ArrowUp") {
       e.preventDefault();
-      setSelected((i) => Math.max(0, i - 1));
+      setSelected((i) => (picking ? Math.max(0, i - 1) : 0));
+      setPicking(true);
       return;
     }
     if (e.key === "Enter") {
@@ -197,9 +212,14 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
           {results.length === 0 && <li className="palette__empty">Ничего не найдено</li>}
           {results.map((item, index) => (
             <li
-              key={`${item.id}:${item.passwordField}`}
-              className={`palette__row${index === selected ? " palette__row--active" : ""}`}
-              onMouseEnter={() => setSelected(index)}
+              // Индекс в ключе обязателен: в записи бывают два секретных поля с
+            // одинаковым именем, и без него ключи совпадали бы.
+            key={`${item.id}:${item.passwordField}:${index}`}
+              className={`palette__row${picking && index === selected ? " palette__row--active" : ""}`}
+              onMouseEnter={() => {
+              setSelected(index);
+              setPicking(true);
+            }}
             >
               <span className="palette__row-text">
                 <span className="palette__row-title">{item.title || "(без названия)"}</span>
@@ -217,7 +237,7 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
                       if (v !== null) void copyValue(v, "логин");
                     }}
                   >
-                    {copied === "логин" && index === selected ? <CheckIcon size={14} /> : <UserIcon size={14} />}
+                    {copied === "логин" && index === selected && picking ? <CheckIcon size={14} /> : <UserIcon size={14} />}
                   </button>
                 )}
                 <button
@@ -230,7 +250,7 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
                     if (v !== null) void copyValue(v, "пароль");
                   }}
                 >
-                  {copied === "пароль" && index === selected ? <CheckIcon size={14} /> : <KeyIcon size={14} />}
+                  {copied === "пароль" && index === selected && picking ? <CheckIcon size={14} /> : <KeyIcon size={14} />}
                 </button>
                 {item.hasTotp && (
                   <button
@@ -240,7 +260,7 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
                     title="Скопировать код двухфакторки"
                     onClick={() => void copyTotp(item.id)}
                   >
-                    {copied === "код" && index === selected ? <CheckIcon size={14} /> : <ClockIcon size={14} />}
+                    {copied === "код" && index === selected && picking ? <CheckIcon size={14} /> : <ClockIcon size={14} />}
                   </button>
                 )}
               </span>

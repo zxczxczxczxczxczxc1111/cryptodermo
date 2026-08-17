@@ -29,6 +29,7 @@ import {
   renameAccount,
   removeAccount,
   type FieldRow,
+  addAccountPressed,
 } from "./Editor";
 
 // Швы из spec.md §9/§14 и тикета 08 (R28, R84, R98.1, R19). В проекте нет
@@ -485,5 +486,40 @@ describe("аккаунты внутри записи", () => {
   it("удаление аккаунта убирает его поля", () => {
     const rows = removeAccount([row("Логин", "A"), row("Сайт")], "A");
     expect(rows.map((r) => r.name)).toEqual(["Сайт"]);
+  });
+});
+
+describe("addAccountPressed", () => {
+  const r = (name: string, secret = false, group?: string): FieldRow => ({
+    key: name + (group ?? ""),
+    name,
+    value: "",
+    secret,
+    ...(group ? { group } : {}),
+  });
+
+  it("первое нажатие забирает заполненные поля в «Аккаунт 1» и заводит второй", () => {
+    // Иначе получалась бессмыслица: только что заполненные поля аккаунтом не
+    // считались, а первым аккаунтом называлась пустая заготовка.
+    const rows = addAccountPressed([r("Логин"), r("Пароль", true), r("Сайт")]);
+    const byGroup = rows.map((x) => [x.name, x.group]);
+    expect(byGroup).toEqual([
+      ["Логин", "Аккаунт 1"],
+      ["Пароль", "Аккаунт 1"],
+      // Адрес сайта общий для всех учёток сервиса, забирать его нельзя.
+      ["Сайт", undefined],
+      ["Логин", "Аккаунт 2"],
+      ["Пароль", "Аккаунт 2"],
+    ]);
+  });
+
+  it("на пустой записи заводит просто «Аккаунт 1»", () => {
+    const rows = addAccountPressed([]);
+    expect(rows.map((x) => x.group)).toEqual(["Аккаунт 1", "Аккаунт 1"]);
+  });
+
+  it("когда аккаунты уже есть, просто добавляет следующий", () => {
+    const rows = addAccountPressed([r("Логин", false, "Личная")]);
+    expect(rows.map((x) => x.group)).toEqual(["Личная", "Аккаунт 1", "Аккаунт 1"]);
   });
 });

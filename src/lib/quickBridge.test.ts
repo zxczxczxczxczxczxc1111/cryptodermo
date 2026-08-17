@@ -155,3 +155,43 @@ describe("buildQuickRows с аккаунтами", () => {
     expect(rows[1].passwordField).toBe("Общий пароль");
   });
 });
+
+describe("уточнение строки", () => {
+  const fg = (name: string, value: string, secret: boolean, group?: string) => ({
+    name,
+    value,
+    secret,
+    ...(group ? { group } : {}),
+  });
+
+  it("не повторяет логин, если он совпадает с названием записи", () => {
+    // «123123123 · Аккаунт 1 · 123123123» сообщает ровно то же, что
+    // «123123123 · Аккаунт 1», только вдвое длиннее.
+    const rows = buildQuickRows([
+      {
+        id: "1",
+        title: "123123123",
+        fields: [fg("Логин", "123123123", false, "Аккаунт 1"), fg("Пароль", "p", true, "Аккаунт 1")],
+      },
+    ]);
+    expect(rows[0].detail).toBe("Аккаунт 1");
+  });
+
+  it("не повторяет логин и без аккаунтов", () => {
+    const rows = buildQuickRows([
+      { id: "1", title: "почта@x.ru", fields: [fg("Логин", "почта@x.ru", false), fg("Пароль", "p", true)] },
+    ]);
+    expect(rows[0].detail).toBe("");
+  });
+
+  it("склеивает имя аккаунта и логин через разделитель, когда они разные", () => {
+    const rows = buildQuickRows([
+      {
+        id: "1",
+        title: "gmail",
+        fields: [fg("Логин", "a@gmail.com", false, "Личная"), fg("Пароль", "p", true, "Личная")],
+      },
+    ]);
+    expect(rows[0].detail).toBe("Личная · a@gmail.com");
+  });
+});

@@ -145,12 +145,18 @@
   min-width: 0;
 }
 
+/* Название сжимается последним: обрезать его, оставив логин целиком, значит
+   спрятать именно то, по чему ищут (замечено пользователем 17.08.2026). */
 .palette__row-title {
-  flex: none;
-  max-width: 55%;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .palette__row-detail {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

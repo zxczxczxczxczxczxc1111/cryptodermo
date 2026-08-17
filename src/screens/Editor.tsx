@@ -460,6 +460,44 @@ export function addAccountRows(rows: FieldRow[], name: string): FieldRow[] {
   ];
 }
 
+/**
+ * Нажатие «Добавить аккаунт».
+ *
+ * Первое нажатие ЗАБИРАЕТ уже заполненные поля в «Аккаунт 1» и заводит пустой
+ * «Аккаунт 2». Иначе получалась бессмыслица, которую сразу увидел пользователь
+ * (17.08.2026): поля, которые он только что заполнил, аккаунтом не считались и
+ * висели безымянными, а первым аккаунтом называлась пустая заготовка - то есть
+ * второй по счёту.
+ *
+ * Забираются не все поля подряд, а только те, что относятся к учётной записи:
+ * пары логин-пароль. Поля вроде адреса сайта остаются общими - они и правда
+ * общие для всех учёток одного сервиса.
+ *
+ * Дальнейшие нажатия просто добавляют следующий пустой аккаунт.
+ */
+export function addAccountPressed(rows: FieldRow[]): FieldRow[] {
+  const hasAccounts = rows.some((r) => r.group && r.group.trim() !== "");
+  if (hasAccounts) return addAccountRows(rows, nextAccountName(rows));
+
+  const firstName = "Аккаунт 1";
+  const adopted = rows.map((row) =>
+    isCredentialField(row) ? { ...row, group: firstName } : row,
+  );
+  const anythingAdopted = adopted.some((r) => r.group === firstName);
+  return addAccountRows(adopted, anythingAdopted ? "Аккаунт 2" : firstName);
+}
+
+/**
+ * Поле относится к учётной записи, а не ко всему сервису.
+ *
+ * Секретное - почти наверняка пароль или код. Несекретное считается логином,
+ * если оно стоит ДО первого секретного: так эти записи и заполняют. Всё, что
+ * идёт после паролей (адрес сайта, заметка о тарифе), остаётся общим.
+ */
+function isCredentialField(row: FieldRow): boolean {
+  return row.secret || row.name.trim().toLowerCase() === ACCOUNT_LOGIN_FIELD.toLowerCase();
+}
+
 /** Переименовать аккаунт. Пустое имя означает «вынести поля из аккаунта». */
 export function renameAccount(rows: FieldRow[], from: string, to: string): FieldRow[] {
   const trimmed = to.trim();
@@ -1095,6 +1133,9 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
               className={`editor__group${group.name !== null ? " editor__group--account" : ""}`}
               key={group.name ?? "__common"}
             >
+              {group.name === null && groupFieldRows(form.fields).length > 1 && (
+                <span className="editor__group-common">Общие поля</span>
+              )}
               {group.name !== null && (
                 <div className="editor__group-header">
                   <input
@@ -1231,7 +1272,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             type="button"
             className="editor__add-account-btn"
             onClick={() =>
-              setForm((f) => ({ ...f, fields: addAccountRows(f.fields, nextAccountName(f.fields)) }))
+              setForm((f) => ({ ...f, fields: addAccountPressed(f.fields) }))
             }
           >
             Добавить аккаунт

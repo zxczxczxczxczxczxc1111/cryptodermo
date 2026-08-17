@@ -104,6 +104,31 @@ export const COPY_LABELS: Record<QuickCopyKind, string> = {
   totp: "код",
 };
 
+/**
+ * Уточнение справа от названия.
+ *
+ * Собирается из имени аккаунта и логина, но с двумя оговорками, каждая из
+ * которых родилась из реального экрана (17.08.2026):
+ *
+ * 1. Логин, совпадающий с названием записи, не повторяется. Строка
+ *    «123123123 · Аккаунт 1 · 123123123» сообщает ровно то же, что
+ *    «123123123 · Аккаунт 1», только вдвое длиннее.
+ * 2. Пустые части выбрасываются, а не превращаются в висящие разделители.
+ */
+function buildDetail(
+  title: string,
+  accountName: string | null,
+  loginValue: string | null,
+  fallback: string | null = null,
+): string {
+  const parts: string[] = [];
+  if (accountName && accountName.trim() !== "") parts.push(accountName.trim());
+  const login = loginValue?.trim() ?? "";
+  if (login !== "" && login.toLowerCase() !== title.trim().toLowerCase()) parts.push(login);
+  if (parts.length === 0 && fallback) parts.push(fallback);
+  return parts.join(" · ");
+}
+
 /** Поле похоже на секрет двухфакторки. Своя маленькая копия проверки, чтобы
  * этот модуль не тянул за собой весь `totp.ts` - он подключается и в окне, где
  * коды не считаются. */
@@ -151,9 +176,7 @@ export function buildQuickRows(items: ItemLike[]): QuickResult[] {
         rows.push({
           id: item.id,
           title: item.title,
-          // Имя аккаунта важнее логина: человек назвал его сам, значит так ему
-          // и понятнее. Логин остаётся как уточнение, когда имени мало.
-          detail: login ? `${name} · ${login.value}` : name,
+          detail: buildDetail(item.title, name, login ? login.value : null),
           passwordField: secret.name,
           loginField: login ? login.name : null,
           loginValue: login ? login.value : null,
@@ -190,7 +213,12 @@ export function buildQuickRows(items: ItemLike[]): QuickResult[] {
         // Уточняем логином. Имя поля - только когда логина нет И паролей
         // несколько: иначе в строке висела бы подпись «Пароль», из которой
         // ничего не следует.
-        detail: login && login.value.trim() !== "" ? login.value : secrets.length > 1 ? secret.name : "",
+        detail: buildDetail(
+          item.title,
+          null,
+          login && login.value.trim() !== "" ? login.value : null,
+          secrets.length > 1 ? secret.name : null,
+        ),
         passwordField: secret.name,
         loginField: login ? login.name : null,
         loginValue: login && login.value.trim() !== "" ? login.value : null,

@@ -483,3 +483,27 @@
 .editor__add-account-btn:hover {
   background: var(--surface-hover);
 }
+
+/* Блок раскладывается колонкой: без этого кнопки «Добавить поле» и «Код
+   двухфакторки» вставали не на своё место и вылезали за скруглённую рамку
+   аккаунта (замечено пользователем 17.08.2026). */
+.editor__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* Подпись блока общих полей. Появляется только когда есть хотя бы один
+   аккаунт: без аккаунтов подписывать нечего, все поля и так общие. */
+.editor__group-common {
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+/* Кнопки блока прижаты к левому краю и не растягиваются на всю ширину. */
+.editor__group .editor__field-buttons {
+  flex-wrap: wrap;
+  align-self: flex-start;
+}

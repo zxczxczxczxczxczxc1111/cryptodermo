@@ -1,5 +1,5 @@
 // Точка входа Rust-части приложения. Всё, что здесь есть, - это регистрация
-// четырёх команд файлового слоя из `vault_fs.rs`. Больше Rust-код ничего не
+// пяти команд файлового слоя из `vault_fs.rs`. Больше Rust-код ничего не
 // делает: шифрование, разбор формата файла и вся бизнес-логика - в
 // TypeScript (см. `src/lib/`), потому что WebCrypto и JSON прекрасно
 // работают прямо в WebView.
@@ -15,6 +15,7 @@ pub fn run() {
             vault_fs::write_vault_atomic,
             vault_fs::list_backups,
             vault_fs::rotate_backups,
+            vault_fs::exe_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

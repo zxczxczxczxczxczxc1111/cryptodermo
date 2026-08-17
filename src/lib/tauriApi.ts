@@ -65,3 +65,14 @@ export async function listBackups(dir: string): Promise<BackupInfo[]> {
 export async function rotateBackups(dir: string, keepN: number): Promise<void> {
   await invoke<void>("rotate_backups", { dir, keepN });
 }
+
+/**
+ * Каталог, в котором лежит исполняемый файл приложения. Нужен как путь по
+ * умолчанию к `vault.dat` при самом первом запуске, когда
+ * `vault.settings.json` ещё не существует и `lastVaultPath` неизвестен - см.
+ * комментарии в `exe_dir` в Rust-коде про то, почему это не
+ * `executableDir()` из `@tauri-apps/api/path` (на Windows не поддерживается).
+ */
+export async function exeDir(): Promise<string> {
+  return invoke<string>("exe_dir");
+}

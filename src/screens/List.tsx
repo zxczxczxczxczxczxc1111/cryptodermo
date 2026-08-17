@@ -31,9 +31,9 @@ export interface ListProps {
    * вызывающим кодом (тикет 12), этот компонент его не создаёт. */
   store: VaultStore;
   /** Путь к файлу базы - нужен только для того, чтобы передать его в
-   * `RecordCard` (кнопка "Удалить" у вложения, тикет 11: без `store`+
-   * `vaultPath` вместе эта кнопка не рендерится вовсе). Сам `List` файлов не
-   * читает и не пишет. */
+   * `RecordCard` (кнопка "Удалить" у вложения, тикет 11, И кнопка "Удалить
+   * запись", живой прогон 2026-08-17: без `store`+`vaultPath` вместе ни одна
+   * из них не рендерится вовсе). Сам `List` файлов не читает и не пишет. */
   vaultPath: string;
   /** Открыть запись в редакторе - сам редактор строит тикет 08 и не
    * импортируется здесь. Вызывается из карточки записи (кнопка
@@ -214,6 +214,24 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
     onStoreChanged?.();
   }
 
+  /** Запись удалена целиком (RecordCard.onDeleted, кнопка "Удалить запись" в
+   * шапке карточки, живой прогон 2026-08-17) - та же логика пересчёта
+   * отображения, что и у `handleAttachmentsChanged` выше (`localVersion` +
+   * `onStoreChanged`), плюс явное закрытие карточки: удалённой записи
+   * больше нет в `store`, показывать её (или молча ждать, пока `full.items`
+   * сам не перестанет её находить) неверно - карточка должна сразу
+   * показать плейсхолдер "Выберите запись слева". Проверка `current === id`
+   * вместо безусловного `null` не меняет наблюдаемое поведение сегодня
+   * (`RecordCard` рендерится только для `selectedItem`, так что `id` здесь
+   * всегда совпадает с текущим выбором) - но не даёт этому обработчику по
+   * ошибке сбросить чужой выбор, если он когда-нибудь станет вызываться не
+   * только для текущей выбранной записи. */
+  function handleItemDeleted(id: string) {
+    setLocalVersion((v) => v + 1);
+    onStoreChanged?.();
+    setSelectedId((current) => (current === id ? null : current));
+  }
+
   /** R89: Esc закрывает открытое - на этом экране "открытое" это карточка
    * выбранной записи в правой колонке. Ничего не делает, если ничего не
    * выбрано (нечего закрывать). */
@@ -307,6 +325,7 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
             store={store}
             vaultPath={vaultPath}
             onAttachmentsChanged={handleAttachmentsChanged}
+            onDeleted={handleItemDeleted}
           />
         ) : (
           <div className="list__detail-placeholder">Выберите запись слева, чтобы посмотреть детали.</div>

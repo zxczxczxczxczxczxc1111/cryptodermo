@@ -69,6 +69,15 @@ export const ITEM_TYPES: ItemType[] = ["login", "note", "card", "key", "other"];
 export const SAVE_LABEL = "Сохранить";
 export const SAVED_LABEL = "Сохранено";
 
+/** Живой прогон (2026-08-17): у диалога "Есть несохранённые изменения" не
+ * было варианта "выйти без сохранения" физически - только "Отмена"
+ * (остаться в редакторе) и "Сохранить" (сохранить и закрыть). Кнопка с этой
+ * подписью зовёт `finishClose()` НАПРЯМУЮ (см. JSX модалки ниже) - не
+ * `attemptSave`/`commitFormToStore`, ни разу не обращается к `store`: правки
+ * формы просто отбрасываются вместе с закрытием, как и должно быть у "выйти
+ * без сохранения". */
+export const DISCARD_LABEL = "Не сохранять";
+
 /** R98.1/R115i - точная формулировка из тикета 08 ("«Есть несохранённые
  * изменения» с выбором сохранить/отменить"), один и тот же диалог что для
  * закрытия карточки редактора, что (через `EditorHandle.requestClose`) для
@@ -1050,6 +1059,19 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             <div className="editor__modal-actions">
               <button type="button" onClick={() => resolvePendingClose(false)}>
                 Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Тот же приём, что и у "Сохранить" ниже - спрятать
+                  // модалку до побочного эффекта. finishClose() не пишет
+                  // ничего в store и не трогает диск: выход без сохранения
+                  // буквально отбрасывает текущую форму вместе с закрытием.
+                  setCloseConfirmVisible(false);
+                  finishClose();
+                }}
+              >
+                {DISCARD_LABEL}
               </button>
               <button
                 type="button"

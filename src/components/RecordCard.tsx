@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import type { Attachment, Item, ItemField, ItemType, VaultStore } from "../lib/vaultStore";
 import { writeVaultAtomic } from "../lib/tauriApi";
@@ -94,22 +94,22 @@ export interface RecordCardProps {
    * только запрос перехода по `id`. */
   onEdit: (id: string) => void;
   /**
-   * Хранилище и путь к базе - нужны только для кнопки "Удалить" у вложения
-   * (R44.2, §18: "вижу вложения в карточке с именем, размером и кнопками
-   * «Скачать»/«Удалить»"). Карточка остаётся в основном view-only (R97):
-   * "Скачать" не нуждается ни в чём из этого (просто декодирует
-   * `attachment.data` и пишет файл через системный диалог, см.
-   * `handleDownloadAttachment`), но "Удалить" - реальная правка записи,
-   * которую нужно закоммитить в `store` и сохранить на диск, а не только
-   * спрятать в локальном состоянии карточки (иначе повторное открытие
-   * записи вернуло бы "удалённое" вложение обратно).
+   * Хранилище и путь к базе - нужны для кнопки "Удалить" у вложения (R44.2,
+   * §18: "вижу вложения в карточке с именем, размером и кнопками
+   * «Скачать»/«Удалить»") И (живой прогон 2026-08-17) для кнопки "Удалить
+   * запись" в шапке, которая удаляет всю запись целиком. Карточка остаётся
+   * в основном view-only (R97): "Скачать" не нуждается ни в чём из этого
+   * (просто декодирует `attachment.data` и пишет файл через системный
+   * диалог, см. `handleDownloadAttachment`), но оба варианта "Удалить" -
+   * реальная правка базы, которую нужно закоммитить в `store` и сохранить
+   * на диск, а не только спрятать в локальном состоянии карточки (иначе
+   * повторное открытие/запись вернула бы "удалённое" обратно).
    *
    * Оба пропа опциональны и предполагаются парой: если хотя бы один не
-   * передан, кнопка "Удалить" у вложений не рендерится вовсе - карточка
-   * ведёт себя как раньше (полностью view-only для вложений), поэтому
-   * существующий вызывающий код (`List.tsx`, тикет 07, вне зоны этого
-   * тикета) остаётся рабочим без изменений, пока тикет 12 ("сведение
-   * экранов") не передаст их по-настоящему.
+   * передан, ни кнопка "Удалить" у вложений, ни кнопка "Удалить запись" не
+   * рендерятся вовсе - карточка ведёт себя как раньше (полностью view-only),
+   * поэтому существующий вызывающий код, который не передаёт их (если
+   * такой появится), остаётся рабочим без изменений.
    */
   store?: VaultStore;
   vaultPath?: string;
@@ -118,6 +118,13 @@ export interface RecordCardProps {
    * `item`, который передаёт этой карточке (сама карточка не хранит
    * отдельную копию `item.attachments` - см. `store`/`vaultPath` выше). */
   onAttachmentsChanged?: (updated: Item) => void;
+  /** Запись удалена целиком и сохранена на диск (кнопка "Удалить запись" в
+   * шапке, живой прогон 2026-08-17) - вызывающий код (`List.tsx`) решает,
+   * что показать вместо закрытой карточки (сама карточка после этого больше
+   * не должна рендериться с этим `item`, он не существует). Та же
+   * опциональность и та же пара `store`/`vaultPath`, что и у
+   * `onAttachmentsChanged` выше. */
+  onDeleted?: (id: string) => void;
 }
 
 type Tab = "fields" | "history";
@@ -134,21 +141,39 @@ function formatDate(iso: string): string {
   });
 }
 
-export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChanged }: RecordCardProps) {
+/** Текст подтверждения кнопки "Удалить запись" в шапке карточки - вынесена
+ * ради теста (см. RecordCard.test.ts), тот же приём, что и у
+ * `formatCountDecreaseMessage` в Editor.tsx для текста своей модалки.
+ * Запасное название для пустого `title` - тот же литерал, что уже
+ * используется в List.tsx (`item.title || "(без названия)"`), чтобы текст
+ * диалога не показывал пустые кавычки у записи без названия. */
+export function formatDeleteConfirmMessage(title: string): string {
+  const displayTitle = title || "(без названия)";
+  return `Удалить запись «${displayTitle}»? Действие нельзя отменить.`;
+}
+
+export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChanged, onDeleted }: RecordCardProps) {
   const [tab, setTab] = useState<Tab>("fields");
   const [revealed, setRevealed] = useState<Set<string>>(() => new Set());
   const [revealedHistory, setRevealedHistory] = useState<Set<string>>(() => new Set());
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const hasHistory = (item.history?.length ?? 0) > 0;
+  // Означает "есть право мутировать store" - изначально только для удаления
+  // вложения, живой прогон 2026-08-17 добавил второго потребителя (кнопка
+  // "Удалить запись" в шапке), имя переменной оставлено как есть (см.
+  // комментарий у RecordCardProps.store/vaultPath выше).
   const canDeleteAttachments = Boolean(store && vaultPath);
 
-  // Переключение на другую запись сбрасывает раскрытые поля и вкладку -
-  // "Показать" одной записи не должно утекать в следующую только потому,
-  // что карточка не была размонтирована (список переиспользует один и тот
-  // же <RecordCard>, меняя только item).
+  // Переключение на другую запись сбрасывает раскрытые поля, вкладку и
+  // состояние обеих операций удаления - "Показать"/ошибка/открытая модалка
+  // одной записи не должны утекать в следующую только потому, что карточка
+  // не была размонтирована (список переиспользует один и тот же
+  // <RecordCard>, меняя только item).
   useEffect(() => {
     setTab("fields");
     setRevealed(new Set());
@@ -156,6 +181,8 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
     setCopiedField(null);
     setCopyError(null);
     setAttachmentError(null);
+    setDeleteConfirmVisible(false);
+    setDeleteError(null);
   }, [item.id]);
 
   /** Кнопка "Скачать" у вложения (R44.2) - диалог `save()` с именем файла
@@ -202,6 +229,49 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
     }
   }
 
+  /**
+   * Кнопка "Удалить запись" в шапке, после подтверждения в модалке ниже
+   * (живой прогон 2026-08-17) - реальное необратимое удаление всей записи
+   * (`store.deleteItem` + `store.save`), не локальное скрытие. Рендерится
+   * только когда `store`/`vaultPath` оба переданы (см. `canDeleteAttachments`
+   * выше).
+   *
+   * `store.save` вызывается сразу с `{ allowCountDecrease: true }` - без
+   * этого флага `save()` бросал бы `ItemCountDecreasedError` на КАЖДОЕ
+   * удаление одной записи: удаление всегда уменьшает число записей
+   * относительно `loadedCount` (R28, vaultStore.ts, выставляется при
+   * последней успешной загрузке/сохранении) - см. vaultStore.test.ts,
+   * describe "VaultStore: save() refuses a silent item-count decrease
+   * (R28)". Модалка подтверждения ниже ("Действие нельзя отменить") - и
+   * есть то самое явное согласие пользователя на уменьшение числа записей;
+   * второй диалог R28 поверх неё был бы избыточным повтором одного и того
+   * же решения (тот же принцип, что и `confirmCountWarningAndSave` в
+   * Editor.tsx применяет к уже подтверждённому пользователем сохранению).
+   */
+  async function handleDeleteItem() {
+    if (!store || !vaultPath) return; // defensive - кнопка не должна была отрендериться без обоих пропов
+    setDeleteError(null);
+    try {
+      store.deleteItem(item.id);
+      await store.save(vaultPath, { allowCountDecrease: true });
+      onDeleted?.(item.id);
+    } catch (err) {
+      console.error("RecordCard: не удалось удалить запись", err);
+      setDeleteError("Не удалось удалить запись. Попробуйте снова.");
+    }
+  }
+
+  /** R89: Esc закрывает открытое - единственное, что может быть открыто в
+   * этом компоненте, это модалка подтверждения удаления записи.
+   * `stopPropagation` - иначе то же нажатие Esc заодно закрыло бы и саму
+   * карточку через обработчик `List.tsx` (тот же приём, что в Editor.tsx
+   * применяет к своим модалкам поверх `requestCloseInternal`). */
+  function handleRecordCardKeyDown(e: KeyboardEvent<HTMLElement>) {
+    if (e.key !== "Escape" || !deleteConfirmVisible) return;
+    e.stopPropagation();
+    setDeleteConfirmVisible(false);
+  }
+
   function toggleReveal(name: string) {
     setRevealed((prev) => {
       const next = new Set(prev);
@@ -241,16 +311,33 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
   }
 
   return (
-    <section className="record-card" aria-label={`Запись: ${item.title}`}>
+    <section className="record-card" aria-label={`Запись: ${item.title}`} onKeyDown={handleRecordCardKeyDown}>
       <header className="record-card__header">
         <div className="record-card__heading">
           <span className="record-card__type">{TYPE_LABELS[item.type]}</span>
           <h2 className="record-card__title">{item.title}</h2>
         </div>
-        <button type="button" className="record-card__edit-btn" onClick={() => onEdit(item.id)}>
-          Редактировать
-        </button>
+        <div className="record-card__header-actions">
+          <button type="button" className="record-card__edit-btn" onClick={() => onEdit(item.id)}>
+            Редактировать
+          </button>
+          {canDeleteAttachments && (
+            <button
+              type="button"
+              className="record-card__delete-btn"
+              onClick={() => setDeleteConfirmVisible(true)}
+            >
+              Удалить запись
+            </button>
+          )}
+        </div>
       </header>
+
+      {deleteError && (
+        <p className="record-card__copy-error" role="alert">
+          {deleteError}
+        </p>
+      )}
 
       {item.tags.length > 0 && (
         <ul className="record-card__tags">
@@ -415,6 +502,35 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
               </li>
             ))}
         </ul>
+      )}
+
+      {deleteConfirmVisible && (
+        <div className="record-card__modal-overlay" role="presentation">
+          <div
+            className="record-card__modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="record-card-delete-title"
+          >
+            <h2 id="record-card-delete-title">Удаление записи</h2>
+            <p>{formatDeleteConfirmMessage(item.title)}</p>
+            <div className="record-card__modal-actions">
+              <button type="button" onClick={() => setDeleteConfirmVisible(false)}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="record-card__modal-delete-btn"
+                onClick={() => {
+                  setDeleteConfirmVisible(false);
+                  void handleDeleteItem();
+                }}
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

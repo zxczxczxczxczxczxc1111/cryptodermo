@@ -89,7 +89,7 @@
 .settings__input {
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-field);
-  border: var(--border-w) solid var(--border-strong);
+  border: var(--border-w) solid var(--border);
   background: var(--surface);
   color: var(--text);
   font-family: var(--font-mono);

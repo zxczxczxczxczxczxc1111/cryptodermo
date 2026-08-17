@@ -68,7 +68,7 @@
   flex: none;
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-field);
-  border: var(--border-w) solid var(--border-strong);
+  border: var(--border-w) solid var(--border);
   background: var(--surface-hover);
   color: var(--text);
   font-family: var(--font-ui);
@@ -79,7 +79,7 @@
 }
 
 .list__add-btn:hover {
-  background: var(--surface);
+  background: var(--btn-bg-hover);
 }
 
 .list__add-btn:focus-visible {

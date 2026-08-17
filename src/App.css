@@ -149,7 +149,7 @@
 .app-modal__actions button {
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-field);
-  border: var(--border-w) solid var(--border-strong);
+  border: var(--border-w) solid var(--border);
   background: var(--surface-hover);
   color: var(--text);
   font-family: var(--font-ui);
@@ -159,7 +159,7 @@
 }
 
 .app-modal__actions button:hover {
-  background: var(--surface);
+  background: var(--btn-bg-hover);
 }
 
 .app-modal__actions button:focus-visible {

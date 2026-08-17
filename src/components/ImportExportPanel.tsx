@@ -31,6 +31,15 @@ import "./ImportExportPanel.css";
  * - «Экспорт» (R100) - весь `Item[]` (`store.search("")` - пустая строка
  *   возвращает все записи, см. контракт `VaultStore.search` в
  *   `vaultStore.ts`) в открытый форматированный JSON через тот же `save()`.
+ *   Перед показом системного диалога сохранения - явное предупреждение
+ *   (модалка `exportConfirmVisible`, тот же inline-паттерн `role="dialog"`,
+ *   что и у модалки подтверждения импорта ниже): содержимое файла экспорта
+ *   намеренно нешифрованное (R100, см. комментарий у `serializeExport` в
+ *   `importExport.ts`), но до этой модалки ничего не предупреждало
+ *   пользователя об этом ДО записи файла на диск - живая проверка нашла,
+ *   что кнопка сразу открывала диалог сохранения. Сам формат экспорта эта
+ *   модалка не меняет, только останавливает перед необратимой записью и
+ *   даёт передумать («Отмена» - тот же диалог `save()` не открывается вовсе).
  * - «Импорт» (R100/R100.1) - `open()` -> чтение байт (`readVault`) ->
  *   `parseImportFile` (бросает `ImportValidationError` целиком на любой
  *   некорректной структуре, ничего не тронуто) -> второе явное
@@ -80,6 +89,17 @@ export const IMPORT_LABEL = "Импорт";
 export const REPLACE_LABEL = "Заменить";
 const CANCEL_LABEL = "Отмена";
 const IMPORT_DONE_LABEL = "Записи заменены";
+/** Заголовок и текст кнопки подтверждения модалки перед экспортом (см.
+ * комментарий у пункта «Экспорт» в шапке файла) - вынесены и экспортированы
+ * по тому же принципу, что и остальные подписи выше (`SAVE_COPY_LABEL` и
+ * т.д.): используются напрямую, а не хардкодом строки, если/когда для этого
+ * компонента появятся тесты. Тело предупреждения (что именно нешифровано и
+ * куда за защищённой копией) остаётся обычным текстом прямо в JSX ниже - тот
+ * же приём, что уже применён для тела диалогов "Есть несохранённые
+ * изменения"/"Число записей уменьшилось" в `Editor.tsx` (в константу
+ * выносится заголовок/кнопка, не весь абзац). */
+export const EXPORT_CONFIRM_TITLE = "Экспортировать без шифрования?";
+export const EXPORT_CONFIRM_LABEL = "Экспортировать";
 
 const DIALOG_OPEN_FAILED_MESSAGE = "Не удалось открыть системный диалог. Попробуйте ещё раз.";
 const SAVE_COPY_FAILED_MESSAGE =
@@ -104,7 +124,9 @@ export function ImportExportPanel({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState<"copy" | "export" | "import" | null>(null);
   const [importState, setImportState] = useState<ImportState>({ kind: "idle" });
+  const [exportConfirmVisible, setExportConfirmVisible] = useState(false);
   const confirmTitleId = useId();
+  const exportConfirmTitleId = useId();
 
   function reportError(userMessage: string, technicalDetail: unknown) {
     setStatusMessage(null);
@@ -141,9 +163,28 @@ export function ImportExportPanel({
     }
   }
 
-  async function handleExport() {
+  /** Клик по кнопке «Экспорт» - только открывает модалку предупреждения, не
+   * трогает диалог сохранения. Само действие (диалог `save()` -> запись
+   * файла) переехало в `confirmExport` ниже без изменений в этой части -
+   * модалка встала строго ПЕРЕД прежним началом `handleExport`. */
+  function requestExport() {
     setErrorMessage(null);
     setStatusMessage(null);
+    setExportConfirmVisible(true);
+  }
+
+  /** «Отмена» в модалке предупреждения - модалка закрывается, диалог
+   * сохранения при этом не открывается вовсе (в отличие от отмены уже
+   * открытого системного диалога `save()`, которая и раньше не была
+   * ошибкой). */
+  function cancelExport() {
+    setExportConfirmVisible(false);
+  }
+
+  /** Подтверждение модалки предупреждения - дальше тот же поток, что раньше
+   * был в `handleExport` целиком: диалог `save()` -> запись открытого JSON. */
+  async function confirmExport() {
+    setExportConfirmVisible(false);
     let path: string | null;
     try {
       path = await save({
@@ -210,14 +251,23 @@ export function ImportExportPanel({
     setImportState({ kind: "idle" });
   }
 
-  /** R89: Esc закрывает открытое - здесь это модалка подтверждения замены
-   * записей (Esc = "Отмена", тот же путь, что и кнопка). Останавливает
-   * всплытие, чтобы то же нажатие не закрыло следом ещё и весь экран позади
-   * (тикет 12 монтирует эту панель как раздел приложения со своим Esc "назад
-   * к списку" - закрывается только самое верхнее открытое). Вне модалки
-   * ничего не делает - тикету 12 есть куда отдать это нажатие самому. */
+  /** R89: Esc закрывает открытое - здесь это либо модалка предупреждения
+   * перед экспортом, либо модалка подтверждения замены записей при импорте
+   * (Esc = "Отмена", тот же путь, что и кнопка каждой из них; открыться
+   * одновременно они не могут - разные пользовательские действия их
+   * показывают). Останавливает всплытие, чтобы то же нажатие не закрыло
+   * следом ещё и весь экран позади (тикет 12 монтирует эту панель как раздел
+   * приложения со своим Esc "назад к списку" - закрывается только самое
+   * верхнее открытое). Вне модалок ничего не делает - тикету 12 есть куда
+   * отдать это нажатие самому. */
   function handlePanelKeyDown(e: KeyboardEvent<HTMLElement>) {
-    if (e.key === "Escape" && importState.kind === "confirming") {
+    if (e.key !== "Escape") return;
+    if (exportConfirmVisible) {
+      e.stopPropagation();
+      cancelExport();
+      return;
+    }
+    if (importState.kind === "confirming") {
       e.stopPropagation();
       cancelImport();
     }
@@ -248,7 +298,7 @@ export function ImportExportPanel({
         <button type="button" onClick={() => void handleSaveCopy()} disabled={busy !== null}>
           {SAVE_COPY_LABEL}
         </button>
-        <button type="button" onClick={() => void handleExport()} disabled={busy !== null}>
+        <button type="button" onClick={requestExport} disabled={busy !== null}>
           {EXPORT_LABEL}
         </button>
         <button type="button" onClick={() => void handleImportPick()} disabled={busy !== null}>
@@ -263,6 +313,33 @@ export function ImportExportPanel({
         <p className="import-export-panel__error" role="alert">
           {errorMessage}
         </p>
+      )}
+
+      {exportConfirmVisible && (
+        <div className="import-export-panel__modal-overlay" role="presentation">
+          <div
+            className="import-export-panel__modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={exportConfirmTitleId}
+          >
+            <h2 id={exportConfirmTitleId}>{EXPORT_CONFIRM_TITLE}</h2>
+            <p>
+              Файл экспорта будет содержать все пароли и секреты в открытом, нешифрованном виде - как обычный текст,
+              без какой-либо защиты.
+            </p>
+            <p>Любой, у кого окажется доступ к этому файлу, сможет прочитать его содержимое целиком.</p>
+            <p>Для защищённой резервной копии используйте «{SAVE_COPY_LABEL}» - она пишет базу в зашифрованном виде.</p>
+            <div className="import-export-panel__modal-actions">
+              <button type="button" onClick={cancelExport}>
+                {CANCEL_LABEL}
+              </button>
+              <button type="button" onClick={() => void confirmExport()}>
+                {EXPORT_CONFIRM_LABEL}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {importState.kind === "confirming" && (

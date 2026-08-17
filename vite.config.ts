@@ -5,9 +5,51 @@ import react from "@vitejs/plugin-react";
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+/**
+ * Абсолютный путь к файлу заглушки Tauri. Считается из `import.meta.url`, а не
+ * через `path`/`fileURLToPath`, потому что в проекте нет `@types/node` и
+ * добавлять его ради одной строчки конфига незачем (R31). На Windows
+ * `pathname` даёт `/D:/...` - ведущий слэш перед буквой диска убирается, иначе
+ * Vite не найдёт файл.
+ */
+function mockModulePath(name: string): string {
+  return new URL(`./src/dev/tauri-mock/${name}.ts`, import.meta.url).pathname.replace(
+    /^\/([A-Za-z]:)/,
+    "$1",
+  );
+}
+
 // https://vite.dev/config/
-export default defineConfig(async () => ({
+export default defineConfig(async ({ mode }) => ({
   plugins: [react()],
+
+  /**
+   * Режим `mock` (скрипт `npm run dev:mock`) подменяет три модуля Tauri
+   * заглушками из `src/dev/tauri-mock/`, чтобы интерфейс можно было открыть в
+   * обычном браузере. Без этого приложение не рендерится дальше заставки:
+   * `App.tsx` при монтировании зовёт `invoke("exe_dir")`, а вне Tauri
+   * `window.__TAURI_INTERNALS__` не существует.
+   *
+   * Подменяются именно три модуля, а не один `tauriApi.ts`: официальные
+   * плагины импортируются боевым кодом напрямую, мимо него (это разрешено
+   * архитектурой проекта, см. CLAUDE.md) - `@tauri-apps/api/window` в
+   * `App.tsx`, `LockScreen.tsx`, `useAutoLock.ts`, `@tauri-apps/plugin-dialog`
+   * в четырёх файлах.
+   *
+   * В `npm run dev`, `npm run tauri dev` и в собранном бандле подмена не
+   * применяется: условие ложно, и на файлы заглушки нет ни одного импорта из
+   * боевого кода.
+   */
+  resolve:
+    mode === "mock"
+      ? {
+          alias: [
+            { find: /^@tauri-apps\/api\/core$/, replacement: mockModulePath("core") },
+            { find: /^@tauri-apps\/api\/window$/, replacement: mockModulePath("window") },
+            { find: /^@tauri-apps\/plugin-dialog$/, replacement: mockModulePath("dialog") },
+          ],
+        }
+      : undefined,
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
@@ -15,7 +57,10 @@ export default defineConfig(async () => ({
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
-    port: 1420,
+    // В режиме `mock` порт другой, чтобы заглушку можно было держать открытой
+    // одновременно с настоящим `tauri dev` и сравнивать их бок о бок.
+    // `strictPort` ниже иначе уронил бы вторую из двух команд.
+    port: mode === "mock" ? 1430 : 1420,
     strictPort: true,
     // На части машин (в т.ч. на этой) "localhost" резолвится в IPv6 (::1)
     // раньше IPv4, и Vite слушает только IPv6-адрес. Проверка готовности

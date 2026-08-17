@@ -36,6 +36,11 @@
   background: var(--surface);
 }
 
+.import-export-panel__actions button:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
+}
+
 .import-export-panel__actions button:disabled {
   color: var(--text-faint);
   cursor: default;
@@ -55,12 +60,17 @@
 }
 
 .import-export-panel__modal-overlay {
+  /* Затемнение подложки модалки - локальная переменная тем же приёмом, что
+     и --overlay-scrim в Editor.css (общего токена в tokens.css под эту роль
+     нет, заводить его вне зоны этого тикета). */
+  --overlay-scrim: rgba(0, 0, 0, 0.5);
+
   position: fixed;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay-scrim);
   z-index: 100;
 }
 
@@ -108,6 +118,11 @@
 
 .import-export-panel__modal-actions button:hover {
   background: var(--surface);
+}
+
+.import-export-panel__modal-actions button:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
 }
 
 .import-export-panel__modal-actions button:last-child {

@@ -123,6 +123,11 @@
   cursor: pointer;
 }
 
+.lock-screen__recover:focus-visible {
+  outline: var(--border-w) solid var(--accent);
+  outline-offset: var(--sp-0);
+}
+
 .lock-screen__conflict {
   display: flex;
   flex-direction: column;
@@ -146,6 +151,11 @@
   font-family: var(--font-ui);
   font-size: var(--fs-ui);
   cursor: pointer;
+}
+
+.lock-screen__conflict-actions button:focus-visible {
+  outline: var(--border-w) solid var(--accent);
+  outline-offset: var(--sp-0);
 }
 
 .lock-screen__conflict-actions label {

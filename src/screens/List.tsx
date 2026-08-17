@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { Item, VaultStore } from "../lib/vaultStore";
 import { RecordCard, TYPE_LABELS, hasStaleSecretField } from "../components/RecordCard";
 import { StatusDot } from "../components/StatusDot";
@@ -30,10 +30,30 @@ export interface ListProps {
   /** Экземпляр `VaultStore` уже загруженной базы - создаётся и передаётся
    * вызывающим кодом (тикет 12), этот компонент его не создаёт. */
   store: VaultStore;
+  /** Путь к файлу базы - нужен только для того, чтобы передать его в
+   * `RecordCard` (кнопка "Удалить" у вложения, тикет 11: без `store`+
+   * `vaultPath` вместе эта кнопка не рендерится вовсе). Сам `List` файлов не
+   * читает и не пишет. */
+  vaultPath: string;
   /** Открыть запись в редакторе - сам редактор строит тикет 08 и не
    * импортируется здесь. Вызывается из карточки записи (кнопка
    * "Редактировать"). */
   onOpenItem: (id: string) => void;
+  /** Создать новую запись - кнопка "Добавить запись" (тулбар и приглашение
+   * пустого списка, R87). Необязательный: без него обе кнопки не
+   * рендерятся, компонент остаётся рабочим и без этого колбэка (тот же
+   * принцип опциональности, что и у `RecordCardProps.onAttachmentsChanged`). */
+  onCreateNew?: () => void;
+  /**
+   * Стор был изменён прямо внутри этого экрана (сейчас - только удаление
+   * вложения из карточки, см. `RecordCard.onAttachmentsChanged`) - сигнал
+   * вызывающему коду (тикет 12), что данные "снаружи" `List` (например,
+   * счётчик записей в `StatusBar` или список "Недавние") тоже могли устареть
+   * и стоит их пересчитать. Сам `List` уже обновляет СВОЁ отображение
+   * независимо от этого колбэка (см. `localVersion` ниже) - колбэк только
+   * для внешних потребителей.
+   */
+  onStoreChanged?: () => void;
   /**
    * Необязательный "маячок" внешнего изменения стора. `VaultStore` мутирует
    * коллекцию на месте (`addItem`/`updateItem`/`deleteItem`/повторный
@@ -49,6 +69,13 @@ export interface ListProps {
 
 type SearchResult = { items: Item[]; error: string | null };
 
+/** R50/R85: фиксированный русский текст для отказа `store.search()` - сырое
+ * `err.message` из `VaultStore` (например, `VaultNotLoadedError`) написано
+ * по-английски и предназначено для лога/разработчика, не для интерфейса.
+ * Техническая причина уходит в `console.error` (см. `safeSearch` ниже), в
+ * тексте на экране остаётся только это. */
+const SEARCH_FAILED_MESSAGE = "Не удалось получить список записей. Попробуйте перезапустить приложение.";
+
 /** `store.search()` обёрнут в try/catch: `VaultStore` кидает
  * `VaultNotLoadedError`, если его вызвали до `loadFromBytes`/
  * `createNewVault` - контракт этого экрана предполагает уже загруженный
@@ -58,7 +85,8 @@ function safeSearch(store: VaultStore, query: string): SearchResult {
   try {
     return { items: store.search(query), error: null };
   } catch (err) {
-    return { items: [], error: err instanceof Error ? err.message : String(err) };
+    console.error("List: store.search() failed", err);
+    return { items: [], error: SEARCH_FAILED_MESSAGE };
   }
 }
 
@@ -114,11 +142,16 @@ function formatRelativeTime(iso: string, now: number): string {
   return `${years} г назад`;
 }
 
-export function List({ store, onOpenItem, refreshToken }: ListProps) {
+export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged, refreshToken }: ListProps) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
+  // Изменение стора ИЗНУТРИ этого экрана (сейчас - только удаление вложения
+  // из RecordCard, см. handleAttachmentsChanged ниже). `refreshToken` из
+  // пропсов сигнализирует об изменениях СНАРУЖИ (тикет 12) - это отдельный,
+  // локальный счётчик для изменений, о которых внешний код знать не может.
+  const [localVersion, setLocalVersion] = useState(0);
 
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -127,7 +160,7 @@ export function List({ store, onOpenItem, refreshToken }: ListProps) {
   // остаётся открытой в карточке, даже если пользователь потом сузил поиск
   // так, что сама запись больше не входит в видимые строки - строка search
   // сужает только ЛЕВУЮ колонку, а не то, какая карточка открыта.
-  const full = useMemo<SearchResult>(() => safeSearch(store, ""), [store, refreshToken]);
+  const full = useMemo<SearchResult>(() => safeSearch(store, ""), [store, refreshToken, localVersion]);
 
   const filtered = useMemo<SearchResult>(() => {
     if (query.trim() === "") return full;
@@ -169,8 +202,29 @@ export function List({ store, onOpenItem, refreshToken }: ListProps) {
 
   const now = Date.now();
 
+  /** Вложение удалено в карточке (RecordCard.onAttachmentsChanged, тикет 11)
+   * - сама запись в `store` уже обновлена и сохранена на диск к этому
+   * моменту, здесь только пересчёт отображения: `localVersion` заставляет
+   * `full`/`filtered` перечитать `store.search()` заново (иначе карточка
+   * продолжала бы показывать старый список вложений до следующего внешнего
+   * `refreshToken`), а `onStoreChanged` сообщает наверх (тикет 12), что
+   * данные вне этого экрана (например, счётчик в StatusBar) тоже устарели. */
+  function handleAttachmentsChanged() {
+    setLocalVersion((v) => v + 1);
+    onStoreChanged?.();
+  }
+
+  /** R89: Esc закрывает открытое - на этом экране "открытое" это карточка
+   * выбранной записи в правой колонке. Ничего не делает, если ничего не
+   * выбрано (нечего закрывать). */
+  function handleListKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Escape" && selectedId !== null) {
+      setSelectedId(null);
+    }
+  }
+
   return (
-    <div className="list">
+    <div className="list" onKeyDown={handleListKeyDown}>
       <div className="list__rows-column">
         <div className="list__search">
           <input
@@ -182,11 +236,16 @@ export function List({ store, onOpenItem, refreshToken }: ListProps) {
             onChange={(e) => setQuery(e.currentTarget.value)}
             autoFocus
           />
+          {onCreateNew && (
+            <button type="button" className="list__add-btn" onClick={onCreateNew}>
+              Добавить запись
+            </button>
+          )}
         </div>
 
         {error ? (
           <p className="list__error" role="alert">
-            Не удалось получить список записей: {error}
+            {error}
           </p>
         ) : (
           <>
@@ -196,9 +255,16 @@ export function List({ store, onOpenItem, refreshToken }: ListProps) {
             </p>
 
             {items.length === 0 ? (
-              <p className="list__empty">
-                {query.trim() === "" ? "Записей пока нет." : "Совпадений не найдено."}
-              </p>
+              <div className="list__empty">
+                <p className="list__empty-text">
+                  {query.trim() === "" ? "Записей пока нет. Добавьте первую." : "Совпадений не найдено."}
+                </p>
+                {query.trim() === "" && onCreateNew && (
+                  <button type="button" className="list__empty-btn" onClick={onCreateNew}>
+                    Добавить запись
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="list__viewport" ref={viewportRef} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
                 <div className="list__spacer" style={{ height: totalHeight }}>
@@ -235,7 +301,13 @@ export function List({ store, onOpenItem, refreshToken }: ListProps) {
 
       <div className="list__detail">
         {selectedItem ? (
-          <RecordCard item={selectedItem} onEdit={onOpenItem} />
+          <RecordCard
+            item={selectedItem}
+            onEdit={onOpenItem}
+            store={store}
+            vaultPath={vaultPath}
+            onAttachmentsChanged={handleAttachmentsChanged}
+          />
         ) : (
           <div className="list__detail-placeholder">Выберите запись слева, чтобы посмотреть детали.</div>
         )}

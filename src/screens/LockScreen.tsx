@@ -442,6 +442,15 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
                     className="lock-screen__input"
                     value={altPathInput}
                     onChange={(e) => setAltPathInput(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      // R89: Enter в этом поле - то же самое, что клик по
+                      // "Выбрать другое место" (кнопка ниже), а не просто
+                      // безмолвное нажатие клавиши без эффекта.
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void handleUseAlternatePath();
+                      }
+                    }}
                   />
                 </>
               )}

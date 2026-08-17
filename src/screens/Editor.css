@@ -54,6 +54,11 @@
   color: var(--text);
 }
 
+.editor__type-btn:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
+}
+
 .editor__close-btn {
   flex: none;
   width: var(--badge-size);
@@ -71,6 +76,11 @@
 .editor__close-btn:hover {
   background: var(--surface-hover);
   color: var(--text);
+}
+
+.editor__close-btn:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
 }
 
 .editor__body {
@@ -174,6 +184,12 @@
   color: var(--danger);
 }
 
+.editor__tag-remove:focus-visible,
+.editor__field-remove:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
+}
+
 .editor__tag-input-row {
   display: flex;
   gap: var(--sp-2);
@@ -204,6 +220,14 @@
 .editor__generator-anchor > button:hover,
 .editor__attach-btn:hover {
   background: var(--surface);
+}
+
+.editor__tag-input-row button:focus-visible,
+.editor__add-field-btn:focus-visible,
+.editor__generator-anchor > button:focus-visible,
+.editor__attach-btn:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
 }
 
 .editor__attach-btn:disabled {
@@ -265,6 +289,11 @@
 .editor__attachment-row button:hover {
   background: var(--surface-hover);
   color: var(--text);
+}
+
+.editor__attachment-row button:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
 }
 
 .editor__attachment-warning {
@@ -330,6 +359,11 @@
 
 .editor__save-btn:hover {
   background: var(--surface-hover);
+}
+
+.editor__save-btn:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-1);
 }
 
 .editor__status {
@@ -408,6 +442,11 @@
 
 .editor__modal-actions button:hover {
   background: var(--surface);
+}
+
+.editor__modal-actions button:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
 }
 
 .editor__modal-actions button:last-child {

@@ -1,62 +1,173 @@
 /*
- * Минимальный стиль ТОЛЬКО для временного отладочного экрана из этого
- * тикета (см. App.tsx). Настоящий дизайн-язык (тёмная тема, токены,
- * типографика) - предмет отдельного тикета §7/§8 спецификации, здесь его
- * сознательно нет: этот экран целиком исчезнет, как только появятся
- * реальные экраны приложения.
+ * Сведение экранов (тикет 12). До этого файла тут жили стили временного
+ * отладочного экрана тикета 01 - полностью заменены, у самих экранов уже
+ * есть собственные CSS-файлы (List.css, Editor.css и т.д.), здесь только то,
+ * что принадлежит непосредственно App.tsx: состояния bootstrap (до того, как
+ * известен vaultPath) и обёртка экрана "Импорт и экспорт" (единственный
+ * экран из тикетов 06-11 без собственного заголовка/кнопки закрытия -
+ * `ImportExportPanel.tsx` спроектирован как самостоятельная панель, не
+ * экран, см. её комментарий).
  */
-:root {
-  font-family: system-ui, Arial, sans-serif;
-  font-size: 14px;
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+
+.app-bootstrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
 }
 
-.debug-screen {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 24px;
+.app-bootstrap p {
+  margin: 0;
 }
 
-.debug-screen h1 {
-  font-size: 1.2rem;
+.app-bootstrap--error {
+  color: var(--danger);
 }
 
-.debug-screen section {
-  margin-bottom: 20px;
-  padding: 12px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+/*
+ * Обёртка "Импорт и экспорт" - тот же приём заголовка, что и у
+ * .settings__header/.editor__header (heading + круглая кнопка "×"), чтобы
+ * раздел, доступный из сайдбара наравне с "Настройками", не выглядел
+ * недособранным без чужого заголовка.
+ */
+.app-screen-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
 }
 
-.debug-screen label {
-  display: block;
-  font-size: 0.85rem;
-  margin-bottom: 4px;
+.app-screen-panel__header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: var(--border-w) solid var(--border);
 }
 
-.debug-screen input,
-.debug-screen textarea {
-  width: 100%;
-  box-sizing: border-box;
-  font-family: inherit;
-  padding: 6px 8px;
-  margin-bottom: 8px;
+.app-screen-panel__title {
+  margin: 0;
+  font-size: var(--fs-ui-lg);
 }
 
-.debug-screen button {
+.app-screen-panel__close-btn {
+  flex: none;
+  width: var(--badge-size);
+  height: var(--badge-size);
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-ui-lg);
+  line-height: 1;
   cursor: pointer;
-  padding: 6px 12px;
-  margin-right: 8px;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.debug-screen pre {
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: #1e1e1e;
-  color: #d4d4d4;
-  padding: 10px;
-  border-radius: 4px;
-  max-height: 240px;
-  overflow: auto;
+.app-screen-panel__close-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.app-screen-panel__close-btn:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
+}
+
+.app-screen-panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-4);
+}
+
+.app-screen-panel__error {
+  margin: var(--sp-3) 0 0;
+  color: var(--danger);
+  font-size: var(--fs-ui);
+}
+
+/*
+ * Модалка R28 после импорта (см. persistAfterImport в App.tsx) - тот же
+ * визуальный паттерн, что уже заведён в Editor.css (.editor__modal-*) и
+ * ImportExportPanel.css (.import-export-panel__modal-*): каждый файл держит
+ * свою копию, а не тянет чужой приватный класс через границу файла (тот же
+ * принцип, что и у joinPath/formatRelativeTime в App.tsx).
+ */
+.app-modal-overlay {
+  --overlay-scrim: rgba(0, 0, 0, 0.5);
+
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-scrim);
+  z-index: 100;
+}
+
+.app-modal {
+  --local-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+
+  width: min(420px, 90vw);
+  padding: var(--sp-6);
+  border-radius: var(--r-card);
+  border: var(--border-w) solid var(--border-strong);
+  background: var(--surface-raised);
+  box-shadow: var(--local-shadow);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+.app-modal h2 {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-ui-lg);
+}
+
+.app-modal p {
+  margin: 0 0 var(--sp-4);
+  color: var(--text-dim);
+  font-size: var(--fs-ui);
+}
+
+.app-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.app-modal__actions button {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--border-strong);
+  background: var(--surface-hover);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.app-modal__actions button:hover {
+  background: var(--surface);
+}
+
+.app-modal__actions button:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
+}
+
+.app-modal__actions button:last-child {
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }

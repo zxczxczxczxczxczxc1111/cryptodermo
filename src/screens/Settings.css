@@ -48,6 +48,11 @@
   color: var(--text);
 }
 
+.settings__close-btn:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
+}
+
 .settings__body {
   flex: 1 1 auto;
   min-height: 0;
@@ -129,6 +134,11 @@
 
 .settings__submit:hover {
   background: var(--surface-hover);
+}
+
+.settings__submit:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-1);
 }
 
 .settings__submit:disabled {

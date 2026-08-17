@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import "./PasswordGenerator.css";
 
 /**
@@ -152,8 +152,20 @@ export function PasswordGenerator({ initialOptions, onInsert, onClose }: Passwor
     regenerate(next);
   }
 
+  /** R89: Esc закрывает открытое - здесь это сам поповер генератора.
+   * Останавливает всплытие, чтобы то же нажатие Esc не закрыло следом ещё и
+   * редактор позади (Editor.tsx слушает Esc на всём экране) - закрывается
+   * только самое верхнее открытое. Ничего не делает, если `onClose` не
+   * передан (тот же принцип опциональности, что и у самой кнопки "Закрыть"). */
+  function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Escape" && onClose) {
+      e.stopPropagation();
+      onClose();
+    }
+  }
+
   return (
-    <div className="password-generator" role="group" aria-label="Генератор паролей">
+    <div className="password-generator" role="group" aria-label="Генератор паролей" onKeyDown={handleKeyDown}>
       <div className="password-generator__preview" aria-live="polite">
         {error ? (
           <span className="password-generator__error">{error}</span>

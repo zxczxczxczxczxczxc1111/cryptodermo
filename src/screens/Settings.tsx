@@ -29,7 +29,7 @@
  * JSX-компонент проверен глазами и сборкой (`tsc`/`vite build`), не
  * автотестом.
  */
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { VaultStore, type Item } from "../lib/vaultStore";
 import { deriveKey, encrypt, decrypt, DecryptError } from "../lib/crypto";
 import { serializeContainer, parseContainer, FormatError, type VaultHeader } from "../lib/vaultFormat";
@@ -316,8 +316,18 @@ export function Settings({ store, vaultPath, onPasswordChanged, onAutoLockTimeou
     }
   }
 
+  /** R89: Esc закрывает открытое - здесь это сам экран настроек, тот же
+   * переход, что и клик по "×". Настройки не копят несохранённый черновик
+   * (каждое поле сохраняется своей собственной кнопкой), поэтому закрытие
+   * не нуждается в диалоге подтверждения, в отличие от Editor.tsx. */
+  function handleSettingsKeyDown(e: KeyboardEvent<HTMLElement>) {
+    if (e.key === "Escape") {
+      onClose();
+    }
+  }
+
   return (
-    <section className="settings">
+    <section className="settings" onKeyDown={handleSettingsKeyDown}>
       <header className="settings__header">
         <h1 className="settings__title">Настройки</h1>
         <button type="button" className="settings__close-btn" aria-label="Закрыть" onClick={onClose}>

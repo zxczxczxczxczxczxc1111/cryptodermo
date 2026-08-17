@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { Item, VaultStore } from "../lib/vaultStore";
 import { readVault, writeVaultAtomic } from "../lib/tauriApi";
@@ -210,6 +210,19 @@ export function ImportExportPanel({
     setImportState({ kind: "idle" });
   }
 
+  /** R89: Esc закрывает открытое - здесь это модалка подтверждения замены
+   * записей (Esc = "Отмена", тот же путь, что и кнопка). Останавливает
+   * всплытие, чтобы то же нажатие не закрыло следом ещё и весь экран позади
+   * (тикет 12 монтирует эту панель как раздел приложения со своим Esc "назад
+   * к списку" - закрывается только самое верхнее открытое). Вне модалки
+   * ничего не делает - тикету 12 есть куда отдать это нажатие самому. */
+  function handlePanelKeyDown(e: KeyboardEvent<HTMLElement>) {
+    if (e.key === "Escape" && importState.kind === "confirming") {
+      e.stopPropagation();
+      cancelImport();
+    }
+  }
+
   function confirmImport() {
     if (importState.kind !== "confirming") return;
     const { items } = importState;
@@ -226,7 +239,11 @@ export function ImportExportPanel({
   }
 
   return (
-    <section className="import-export-panel" aria-label="Резервная копия и обмен данными">
+    <section
+      className="import-export-panel"
+      aria-label="Резервная копия и обмен данными"
+      onKeyDown={handlePanelKeyDown}
+    >
       <div className="import-export-panel__actions">
         <button type="button" onClick={() => void handleSaveCopy()} disabled={busy !== null}>
           {SAVE_COPY_LABEL}

@@ -1,4 +1,4 @@
-import { forwardRef, useId, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useId, useImperativeHandle, useRef, useState, type KeyboardEvent } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   ItemCountDecreasedError,
@@ -682,6 +682,32 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     requestClose: () => requestCloseInternal(),
   }));
 
+  /**
+   * R89: Esc закрывает открытое. Приоритет - от самого локального открытого
+   * элемента наружу: сперва модалка подтверждения закрытия (Esc = "Отмена",
+   * остаться в редакторе с правками на месте), затем модалка R28 (Esc =
+   * "Отмена", тот же путь, что и кнопка), и только если ни одна модалка не
+   * открыта - Esc запускает тот же поток, что и кнопка "×"
+   * (`requestCloseInternal`, с диалогом подтверждения, если есть
+   * несохранённые правки). Поповер генератора паролей обрабатывает Esc сам
+   * (`PasswordGenerator.tsx`, останавливает всплытие) - сюда оно в норме не
+   * доходит.
+   */
+  function handleEditorKeyDown(e: KeyboardEvent<HTMLElement>) {
+    if (e.key !== "Escape") return;
+    if (closeConfirmVisible) {
+      e.stopPropagation();
+      resolvePendingClose(false);
+      return;
+    }
+    if (countWarning) {
+      e.stopPropagation();
+      cancelCountWarning();
+      return;
+    }
+    void requestCloseInternal();
+  }
+
   function openGenerator() {
     generatorTargetRef.current =
       lastFocusTargetRef.current ?? (form.fields[0] ? { kind: "field", key: form.fields[0].key } : { kind: "title" });
@@ -706,7 +732,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   }
 
   return (
-    <section className="editor">
+    <section className="editor" onKeyDown={handleEditorKeyDown}>
       <header className="editor__header">
         <div className="editor__type-selector" role="radiogroup" aria-label="Тип записи">
           {ITEM_TYPES.map((t) => (

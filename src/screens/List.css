@@ -27,11 +27,15 @@
 
 .list__search {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   padding: var(--sp-4);
 }
 
 .list__search-input {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   box-sizing: border-box;
   padding: var(--sp-2) var(--sp-3);
   border: var(--border-w) solid var(--border);
@@ -53,6 +57,32 @@
   border-color: var(--border-strong);
 }
 
+/* Тулбарная "Добавить запись" - постоянно доступна рядом с поиском, не
+   только в пустом списке (см. .list__empty-btn ниже - та же кнопка, но
+   как приглашение к действию именно на пустом состоянии, R87). */
+.list__add-btn {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--border-strong);
+  background: var(--surface-hover);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.list__add-btn:hover {
+  background: var(--surface);
+}
+
+.list__add-btn:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
+}
+
 .list__count {
   flex: none;
   margin: 0;
@@ -63,17 +93,54 @@
   text-transform: uppercase;
 }
 
-.list__empty,
-.list__error {
+.list__empty {
   flex: none;
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
   padding: var(--sp-6) var(--sp-4);
   color: var(--text-faint);
   font-size: var(--fs-ui);
   text-align: center;
 }
 
+.list__empty-text {
+  margin: 0;
+}
+
+/* Приглашение к действию на пустом списке (R87) - тот же визуальный вес,
+   что у основной кнопки редактора (.editor__save-btn)/настроек
+   (.settings__submit): акцентная, а не нейтральная, как .list__add-btn в
+   тулбаре - это главное действие на пустом экране, а не рутинная кнопка. */
+.list__empty-btn {
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.list__empty-btn:hover {
+  background: var(--surface-hover);
+}
+
+.list__empty-btn:focus-visible {
+  outline: var(--border-w) solid var(--border-strong);
+  outline-offset: var(--sp-0);
+}
+
 .list__error {
+  flex: none;
+  margin: 0;
+  padding: var(--sp-6) var(--sp-4);
+  font-size: var(--fs-ui);
+  text-align: center;
   color: var(--danger);
 }
 

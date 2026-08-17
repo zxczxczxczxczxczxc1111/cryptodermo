@@ -104,7 +104,7 @@ export function AppShell({
       <main className="app-shell__center">
         {children ?? (
           <div className="app-shell__center-placeholder">
-            Здесь будет поиск и список записей (тикет 07)
+            Здесь появится содержимое выбранного раздела.
           </div>
         )}
       </main>

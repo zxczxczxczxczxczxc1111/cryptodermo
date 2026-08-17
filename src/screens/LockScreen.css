@@ -66,10 +66,199 @@
   border: var(--border-w) solid var(--border);
 }
 
+/* Основной путь входа - без карточки: ни фона, ни рамки, ни паддинга. */
+.lock-screen__panel--bare {
+  width: auto;
+  padding: 0;
+  background: none;
+  border: none;
+}
+
 .lock-screen__form {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+}
+
+/*
+ * ============================================================================
+ * Основной путь входа: логотип и растущие ячейки PIN.
+ *
+ * У этой формы НЕТ панели вокруг (см. `.lock-screen--bare` ниже): карточка
+ * здесь только мешала бы. Фон файла иконки ровно #000000 и совпадает с --bg,
+ * поэтому лицо проступает прямо из темноты, а любая рамка вокруг превратила
+ * бы это в наклейку.
+ * ============================================================================
+ */
+.lock-screen__form--pin {
+  position: relative;
+  align-items: center;
+  gap: var(--sp-8);
+}
+
+/*
+ * Ошибка и запасной путь - ВНЕ ПОТОКА.
+ *
+ * Пока они были обычными детьми колонки, их появление растягивало её, а
+ * колонка центрирована по вертикали: логотип и ячейки уезжали вверх на каждой
+ * неверной попытке (найдено пользователем 17.08.2026). Абсолютное
+ * позиционирование убирает саму возможность сдвига - двигать больше нечего.
+ *
+ * `top: 100%` привязывает блок к низу колонки, а не к фиксированной
+ * координате: если высота логотипа или отступов изменится, ошибка останется
+ * там, где должна.
+ */
+.lock-screen__pin-fallback {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  width: max-content;
+  max-width: min(420px, 90vw);
+  text-align: center;
+  animation: lock-screen-fallback-in var(--transition-slow) ease-out;
+}
+
+@keyframes lock-screen-fallback-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-1 * var(--sp-2)));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lock-screen__pin-fallback {
+    animation: none;
+  }
+}
+
+.lock-screen__logo {
+  /*
+   * 200px при исходнике 512px - это всё ещё уменьшение, а не растягивание,
+   * так что резкость не страдает. Размер выбран как акцентный сознательно:
+   * на экране больше нет ни одного элемента, который мог бы держать
+   * композицию, и логотип обязан быть не иллюстрацией, а центром.
+   */
+  width: 200px;
+  height: 200px;
+  /*
+   * Едва заметный подъём контраста. Исходник тёмный и мягкий, а маска ещё и
+   * гасит края - без этого лицо на чистом чёрном читается вяло. Значения
+   * намеренно почти незаметные: задача вытянуть изображение, а не сделать
+   * "обработанным".
+   */
+  filter: contrast(1.08) brightness(1.06);
+  user-select: none;
+  /*
+   * Радиальная маска гасит края в прозрачность, иначе на фоне был бы виден
+   * квадрат изображения. Снизу растворение сильнее, чем сверху (второй
+   * градиент), - тогда лицо читается как ВЫХОДЯЩЕЕ из темноты, а не как
+   * висящее в пустоте. Два градиента перемножаются через mask-composite.
+   */
+  mask-image: radial-gradient(circle at 50% 46%, #000 58%, transparent 92%),
+    linear-gradient(to bottom, #000 78%, transparent 100%);
+  mask-composite: intersect;
+  -webkit-mask-image: radial-gradient(circle at 50% 46%, #000 58%, transparent 92%),
+    linear-gradient(to bottom, #000 78%, transparent 100%);
+  -webkit-mask-composite: source-in;
+}
+
+/*
+ * Ячейки PIN. Одно скрытое поле ввода + нарисованные поверх ячейки: так
+ * вставка из буфера, выделение, backspace через границу ячейки, стрелки и
+ * экранные читалки работают средствами браузера, а не переписываются руками.
+ */
+.lock-screen__pin {
+  position: relative;
+  display: flex;
+  gap: var(--sp-2);
+  cursor: text;
+}
+
+/* Поле реально существует и принимает ввод, но невидимо: оно растянуто на всю
+   строку ячеек, чтобы щелчок в любую из них попадал именно в него. */
+.lock-screen__pin-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  outline: none;
+  font-size: var(--fs-md);
+  cursor: text;
+}
+
+.lock-screen__pin-cell {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: var(--border-w) solid var(--border-strong);
+  transition:
+    background-color var(--transition),
+    border-color var(--transition),
+    transform var(--transition);
+}
+
+.lock-screen__pin-cell--filled {
+  background: var(--text-strong);
+  border-color: var(--text-strong);
+}
+
+/*
+ * Следующая по очереди ячейка подсвечивается - и это же ЕДИНСТВЕННЫЙ признак
+ * фокуса на всём блоке.
+ *
+ * Обводки вокруг строки ячеек нет намеренно (убрана по просьбе пользователя
+ * 17.08.2026): на экране, где нет ни одной надписи, прямоугольное кольцо
+ * вокруг четырёх точек становится самым заметным объектом и спорит с
+ * логотипом. Но выбросить индикатор фокуса совсем нельзя - с клавиатуры было
+ * бы непонятно, куда идёт ввод. Поэтому роль индикатора берут на себя сами
+ * ячейки: пока поле в фокусе, следующая по очереди крупнее и светлее.
+ *
+ * `:focus-within`, а не `:focus-visible` - подсветка нужна и после щелчка
+ * мышью: человек ткнул в ячейки и должен видеть, что попал.
+ */
+.lock-screen__pin:focus-within .lock-screen__pin-cell--next {
+  border-color: var(--text-dim);
+  transform: scale(1.15);
+}
+
+/*
+ * Дрожь при засчитанной ошибке. Единственная анимация экрана, которая
+ * НЕ декоративна: она сообщает результат, поэтому при prefers-reduced-motion
+ * заменяется на статичную вспышку цветом, а не убирается совсем.
+ */
+@keyframes lock-screen-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+.lock-screen__pin--shake {
+  animation: lock-screen-shake 420ms ease-out;
+}
+
+.lock-screen__pin--shake .lock-screen__pin-cell {
+  border-color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lock-screen__pin--shake {
+    animation: none;
+  }
 }
 
 .lock-screen__label {

@@ -39,10 +39,23 @@ import {
   recordFailedPinAttempt,
   resetPinLockout,
   PinUnlockError,
+  PIN_MIN_LENGTH,
   PIN_MAX_LENGTH,
   type PinWrap,
   type PinLockoutState,
 } from "../lib/pinLock";
+/**
+ * Логотип на экране входа - ТОТ ЖЕ файл, что и иконка приложения, а не его
+ * копия в `src/`. Тот же приём, что уже применён к `emergency-decrypt.py` в
+ * vaultStore.ts: копия неизбежно разойдётся с оригиналом при первой же правке
+ * иконки, а импорт исходного файла разойтись не может.
+ *
+ * Фон изображения ровно `#000000` (измерено: 39.5% его пикселей - чистый
+ * чёрный) и совпадает с `--bg`, поэтому ни карточки, ни рамки, ни свечения
+ * вокруг не нужно - лицо проступает из темноты само. Края гасит радиальная
+ * маска в CSS, иначе был бы виден квадрат.
+ */
+import appIcon from "../../src-tauri/icons/icon.png";
 import "../tokens.css";
 import "./LockScreen.css";
 
@@ -224,8 +237,19 @@ export async function submitRecovery(params: {
  * (например, PIN не сбросили после смены мастер-пароля) неразличимы на
  * крипто-уровне, поэтому и здесь один текст, без подсказок про длину или
  * формат PIN. */
-export const PIN_UNLOCK_ERROR_MESSAGE =
-  "Не удалось войти по PIN. Попробуйте ещё раз или используйте мастер-пароль";
+/**
+ * Текст засчитанной неудачи при входе по PIN.
+ *
+ * Сокращён 17.08.2026 с «Не удалось войти по PIN. Попробуйте ещё раз или
+ * используйте мастер-пароль». Второе предложение было лишним дважды: прямо под
+ * ошибкой появляется кнопка «Войти по мастер-паролю», которая говорит ровно
+ * это, а «попробуйте ещё раз» - единственное, что человек и так может сделать,
+ * глядя на пустые ячейки.
+ *
+ * Формат PIN здесь по-прежнему не подсказывается (R94.1): подсказка «должно
+ * быть 4-8 цифр» на экране входа сужает перебор тому, кто подобрал устройство.
+ */
+export const PIN_UNLOCK_ERROR_MESSAGE = "Неверный PIN-код";
 
 /** Текст ошибки формата/несовпадения PIN при НАСТРОЙКЕ (не при входе) -
  * здесь, в отличие от `PIN_UNLOCK_ERROR_MESSAGE`, подсказать формат не
@@ -307,6 +331,63 @@ export async function submitPinSetup(params: {
 /** Оставшееся время блокировки в мс - 0, если блокировки нет или она уже
  * истекла. `now` - параметр, не `Date.now()` внутри, тот же принцип
  * тестируемости, что и у `isPinLockedOut` в `pinLock.ts`. */
+/**
+ * Сколько ячеек PIN показать при уже введённых `entered` цифрах.
+ *
+ * Длина PIN нигде не хранится и не показывается - это решение пользователя,
+ * и оно снимает сразу три вещи: подсказку атакующему (зная длину, перебор
+ * дешевеет примерно в сто раз), правки в четырёх точках записи настроек и
+ * миграцию существующих баз.
+ *
+ * Поэтому ячейки растут по мере ввода. Начинают с `PIN_MIN_LENGTH`, а не с
+ * одной: PIN короче четырёх цифр всё равно невозможен, и показывать одну
+ * ячейку означало бы обещать то, чего нельзя ввести. Дальше на каждую
+ * введённую цифру добавляется следующая пустая - до `PIN_MAX_LENGTH`.
+ *
+ * Побочный эффект, который здесь важен: по числу ячеек нельзя прочитать длину
+ * чужого PIN, потому что оно зависит только от того, сколько цифр набрано
+ * прямо сейчас.
+ */
+export function visiblePinCellCount(entered: number): number {
+  const grown = Math.max(PIN_MIN_LENGTH, entered + 1);
+  return Math.min(grown, PIN_MAX_LENGTH);
+}
+
+/**
+ * Пора ли пробовать открыть базу этим PIN-ом.
+ *
+ * Тихая попытка запускается на каждой цифре, начиная с минимальной длины:
+ * человек не нажимает ничего, верный PIN открывает базу сам. Неудача такой
+ * попытки НЕ считается попыткой и не показывается - иначе владелец
+ * шестизначного PIN получал бы блокировку на четвёртой цифре, не успев
+ * дописать.
+ */
+export function shouldAttemptPinUnlock(pin: string): boolean {
+  return pin.length >= PIN_MIN_LENGTH && pin.length <= PIN_MAX_LENGTH && /^[0-9]+$/.test(pin);
+}
+
+/**
+ * Считается ли неудача этого PIN-а полноценной провалившейся попыткой.
+ *
+ * Только когда цифры кончились: набрано `PIN_MAX_LENGTH` и не подошло. Всё,
+ * что короче, - промежуточное состояние ввода, а не ошибка. Явное нажатие
+ * Enter обрабатывается отдельно в компоненте: там человек сам сказал "я
+ * закончил", и его слово важнее длины.
+ */
+export function isPinAttemptExhausted(pin: string): boolean {
+  return pin.length >= PIN_MAX_LENGTH;
+}
+
+/**
+ * Пауза после последнего нажатия, по истечении которой запускается тихая
+ * попытка. Меньше - лишние деривации на каждый символ во время набора,
+ * больше - заметная задержка между последней цифрой и открытием базы.
+ */
+export const PIN_SILENT_ATTEMPT_DELAY_MS = 350;
+
+/** Длительность дрожания ячеек при засчитанной ошибке. */
+export const PIN_SHAKE_MS = 420;
+
 export function pinLockoutRemainingMs(state: PinLockoutState | undefined, now: Date): number {
   if (!state?.lockedUntil) return 0;
   return Math.max(0, new Date(state.lockedUntil).getTime() - now.getTime());
@@ -565,8 +646,18 @@ interface NetworkColors {
 
 /** rgb-фолбэки, если чтение переменной из CSS не удалось - совпадают со
  * значениями --text/--text-dim в tokens.css на момент написания. */
-const FALLBACK_NODE_RGB: NetworkColorRgb = { r: 230, g: 234, b: 240 };
-const FALLBACK_LINE_RGB: NetworkColorRgb = { r: 122, g: 132, b: 148 };
+/*
+ * Запасные цвета на случай, если токен не удалось разобрать.
+ *
+ * Оба СТРОГО НЕЙТРАЛЬНЫЕ (r = g = b) и это не косметика, а страховка. Раньше
+ * здесь стояли `#e6eaf0` и `#7a8494` - сине-серые, снятые с прежней палитры. В
+ * тот день, когда разбор токена перестал совпадать с новым синтаксисом, сеть
+ * молча начала рисоваться именно ими, то есть ровно тем оттенком, который из
+ * интерфейса выкорчёвывали. Нейтральный запасной вариант делает такую поломку
+ * незаметной на глаз, а не портящей палитру.
+ */
+const FALLBACK_NODE_RGB: NetworkColorRgb = { r: 255, g: 255, b: 255 };
+const FALLBACK_LINE_RGB: NetworkColorRgb = { r: 153, g: 153, b: 153 };
 
 function parseCssColorToRgb(value: string): NetworkColorRgb | null {
   const trimmed = value.trim();
@@ -586,6 +677,24 @@ function parseCssColorToRgb(value: string): NetworkColorRgb | null {
   const rgbMatch = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(trimmed);
   if (rgbMatch) {
     return { r: Number(rgbMatch[1]), g: Number(rgbMatch[2]), b: Number(rgbMatch[3]) };
+  }
+  /*
+   * Современный синтаксис без запятых: `rgb(255 255 255 / 0.72)`.
+   *
+   * Добавлено 17.08.2026 после настоящей регрессии. Палитра переехала на
+   * белый с прозрачностью, записанный именно так, разбор перестал совпадать и
+   * молча свалился в запасные константы - а в них был зашит `#7a8494`, тот
+   * самый сине-серый, ради удаления которого палитру и переписывали. То есть
+   * линии сети продолжали рисоваться убранным цветом, и увидеть это можно было
+   * только сравнив пиксели: код при этом выглядел исправным.
+   *
+   * Альфа сознательно отбрасывается: прозрачностью узлов и линий управляют
+   * NODE_BASE_ALPHA/LINE_BASE_ALPHA и фаза анимации, а не токен. Токен даёт
+   * только оттенок.
+   */
+  const modernMatch = /^rgba?\(\s*(\d+)\s+(\d+)\s+(\d+)/.exec(trimmed);
+  if (modernMatch) {
+    return { r: Number(modernMatch[1]), g: Number(modernMatch[2]), b: Number(modernMatch[3]) };
   }
   return null;
 }
@@ -784,6 +893,44 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
   const [pinLockoutState, setPinLockoutState] = useState<PinLockoutState | undefined>(undefined);
   const [pinSetupOffered, setPinSetupOffered] = useState(false);
   const [pinValue, setPinValue] = useState("");
+  /** Короткая дрожь ячеек при засчитанной ошибке. */
+  const [pinShake, setPinShake] = useState(false);
+  const pinInputRef = useRef<HTMLInputElement>(null);
+  /**
+   * Номер последней запущенной тихой попытки. Нужен, чтобы запоздавший ответ
+   * не открыл базу после того, как человек стёр символ: деривация занимает
+   * порядка 90мс, и за это время можно успеть нажать ещё пару клавиш. Тот же
+   * класс ошибки, что и «устаревший снимок затирает ввод», только здесь цена
+   * выше - открытие хранилища.
+   */
+  const pinAttemptSeqRef = useRef(0);
+  const pinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Escape возвращает с мастер-пароля к PIN-коду.
+   *
+   * Пользователь нашёл 17.08.2026, что переход на мастер-пароль был дверью в
+   * одну сторону: ни Escape, ни крестика, ни кнопки назад - выйти можно было
+   * только перезапуском приложения. Кнопка добавлена в разметку, здесь -
+   * клавиатурный путь к тому же действию.
+   *
+   * Условие с `pinWrap` обязательно: если PIN не настроен, возвращаться некуда,
+   * и Escape должен молчать, а не переключать экран в состояние, из которого
+   * невозможно войти.
+   */
+  useEffect(() => {
+    if (phase !== "unlock" || !pinWrap) return;
+    // `globalThis.KeyboardEvent`, а не голый `KeyboardEvent`: в этом файле
+    // импортирован одноимённый реактовский тип, и он перекрывает DOM-овский.
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      handleSwitchToPin();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, pinWrap]);
   const [pinSetupValue, setPinSetupValue] = useState("");
   const [pinSetupConfirm, setPinSetupConfirm] = useState("");
   const [lockoutRemainingMs, setLockoutRemainingMs] = useState(0);
@@ -933,42 +1080,92 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
    * (фаза "lockedOut"), иначе - обычный единый текст ошибки, без подсказок
    * про формат PIN (R94.1, см. `PIN_UNLOCK_ERROR_MESSAGE`).
    */
-  async function handlePinUnlockSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (busy || existingBytes === null || !pinWrap) return;
-    setBusy(true);
-    setError(null);
+  /**
+   * Попытка открыть базу PIN-ом.
+   *
+   * `counted: false` - тихая попытка: запускается сама на каждой цифре,
+   * начиная с четвёртой. Неудача НЕ увеличивает счётчик и ничего не
+   * показывает: человек просто продолжает набирать. Без этого владелец
+   * шестизначного PIN упирался бы в блокировку на четвёртой цифре, не успев
+   * дописать - счётчик `PIN_LOCKOUT_MAX_ATTEMPTS` равен трём.
+   *
+   * `counted: true` - настоящая попытка: цифры кончились (набрано
+   * `PIN_MAX_LENGTH`) либо человек сам нажал Enter. Только здесь неудача
+   * записывается в `vault.settings.json`, ячейки дрожат и появляется путь на
+   * мастер-пароль.
+   *
+   * Цена тихих попыток измерена: одна деривация PBKDF2 на 600k итераций -
+   * порядка 90мс, то есть максимум пять попыток за ввод, размазанных по
+   * набору. Приемлемо.
+   */
+  async function attemptPinUnlock(pin: string, opts: { counted: boolean }) {
+    if (existingBytes === null || !pinWrap) return;
+    const seq = ++pinAttemptSeqRef.current;
+    const isCurrent = () => seq === pinAttemptSeqRef.current;
+
+    if (opts.counted) setBusy(true);
     try {
       const result = await submitPinUnlock({
         existingBytes,
         pinWrap,
-        pin: pinValue,
+        pin,
         vaultPath: activePath,
         onUnlock: (unlockedStore, unlockedPath) => {
+          // Запоздавший ответ не должен открыть базу после того, как человек
+          // успел стереть символ: за 90мс деривации можно нажать ещё пару
+          // клавиш, и тогда подошёл бы уже не тот PIN, который на экране.
+          if (!isCurrent()) return;
           proceedAfterUnlock({ store: unlockedStore, unlockedPath, offerPin: null });
         },
       });
-      if (!result.ok) {
-        const now = new Date();
-        const nextLockout = recordFailedPinAttempt(pinLockoutState, now);
-        setPinLockoutState(nextLockout);
-        setPinValue("");
-        updateSettings(activePath, { pinLockout: nextLockout }).catch((err) => {
-          console.error("LockScreen: failed to persist pinLockout after a failed PIN attempt", err);
-        });
-        if (isPinLockedOut(nextLockout, now)) {
-          setLockoutRemainingMs(pinLockoutRemainingMs(nextLockout, now));
-          setPhase("lockedOut");
-        } else {
-          reportError(result.message);
-        }
+      if (result.ok || !isCurrent()) return;
+
+      if (!opts.counted) return; // тихая неудача - молчим, ввод продолжается
+
+      const now = new Date();
+      const nextLockout = recordFailedPinAttempt(pinLockoutState, now);
+      setPinLockoutState(nextLockout);
+      setPinValue("");
+      setPinShake(true);
+      window.setTimeout(() => setPinShake(false), PIN_SHAKE_MS);
+      updateSettings(activePath, { pinLockout: nextLockout }).catch((err) => {
+        console.error("LockScreen: failed to persist pinLockout after a failed PIN attempt", err);
+      });
+      if (isPinLockedOut(nextLockout, now)) {
+        setLockoutRemainingMs(pinLockoutRemainingMs(nextLockout, now));
+        setPhase("lockedOut");
+      } else {
+        reportError(result.message);
       }
     } catch (err) {
       console.error("LockScreen: unexpected error while unlocking by PIN", err);
-      reportError(UNEXPECTED_ERROR_MESSAGE);
+      if (isCurrent() && opts.counted) reportError(UNEXPECTED_ERROR_MESSAGE);
     } finally {
-      setBusy(false);
+      if (opts.counted) setBusy(false);
     }
+  }
+
+  /**
+   * Ввод цифры. Тихая попытка ставится с задержкой, а не на каждое нажатие:
+   * пока человек печатает, запускать деривацию на каждый символ бессмысленно,
+   * а вот дождаться паузы дёшево.
+   */
+  function handlePinChange(next: string) {
+    setPinValue(next);
+    if (error) setError(null);
+    if (pinTimerRef.current !== null) clearTimeout(pinTimerRef.current);
+    if (!shouldAttemptPinUnlock(next)) return;
+    pinTimerRef.current = setTimeout(() => {
+      void attemptPinUnlock(next, { counted: isPinAttemptExhausted(next) });
+    }, PIN_SILENT_ATTEMPT_DELAY_MS);
+  }
+
+  /** Явный Enter: человек сам сказал, что закончил, и его слово важнее длины. */
+  async function handlePinUnlockSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (busy || !shouldAttemptPinUnlock(pinValue)) return;
+    if (pinTimerRef.current !== null) clearTimeout(pinTimerRef.current);
+    await attemptPinUnlock(pinValue, { counted: true });
   }
 
   useEffect(() => {
@@ -1198,6 +1395,14 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
     setPhase("unlock");
   }
 
+  /** Обратный переход: с мастер-пароля назад к PIN-коду. */
+  function handleSwitchToPin() {
+    setError(null);
+    setPassword("");
+    setPinValue("");
+    setPhase("pinEntry");
+  }
+
   async function handleRecoverClick() {
     if (busy || backups.length === 0) return;
     setBusy(true);
@@ -1310,45 +1515,97 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
   return (
     <div className="lock-screen">
       <canvas ref={canvasRef} className="lock-screen__canvas" aria-hidden="true" />
-      <div className="lock-screen__panel">
+      {/* На основном пути входа карточки нет вовсе: логотип и ячейки стоят
+          прямо на чёрном. Рамка вокруг них превратила бы изображение,
+          проступающее из темноты, в наклейку. Все остальные состояния - с
+          объяснениями, полями и кнопками - карточку сохраняют: там она
+          собирает содержимое в один блок. */}
+      <div className={`lock-screen__panel${phase === "pinEntry" ? " lock-screen__panel--bare" : ""}`}>
         {phase === "checking" && (
           <p className="lock-screen__status" role="status">
             {DERIVING_LABEL}
           </p>
         )}
 
+        {/*
+          Основной путь входа. Максимальный минимализм по прямой просьбе
+          пользователя: логотип, ячейки и больше ничего. Ни заголовка, ни
+          подписи "PIN-код", ни кнопки, ни текста про шифрование.
+
+          Ввод устроен как ОДНО скрытое поле с нарисованными поверх ячейками,
+          а не восемь отдельных полей. Так вставка из буфера, выделение,
+          backspace через границу ячейки, стрелки и экранные читалки работают
+          сами, средствами браузера, а не переписываются руками (и работают
+          криво, как это обычно и бывает с наборами из восьми полей).
+
+          Кнопки "Открыть" нет: верный PIN открывает базу сам. Кнопка на
+          мастер-пароль появляется только после засчитанной ошибки - до этого
+          на экране нет ни одной надписи.
+        */}
         {phase === "pinEntry" && (
-          <form className="lock-screen__form" onSubmit={handlePinUnlockSubmit}>
-            <label className="lock-screen__label" htmlFor="lock-screen-pin">
-              PIN-код
-            </label>
-            <input
-              id="lock-screen-pin"
-              type="password"
-              inputMode="numeric"
-              autoComplete="off"
-              maxLength={PIN_MAX_LENGTH}
-              className="lock-screen__input lock-screen__input--pin"
-              value={pinValue}
-              onChange={(e) => setPinValue(e.currentTarget.value.replace(/\D/g, ""))}
-              autoFocus
-              disabled={busy}
+          <form className="lock-screen__form lock-screen__form--pin" onSubmit={handlePinUnlockSubmit}>
+            <img
+              className="lock-screen__logo"
+              src={appIcon}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
             />
-            <button type="submit" className="lock-screen__submit" disabled={busy || pinValue.length === 0}>
-              {busy ? DERIVING_LABEL : "Открыть"}
-            </button>
-            <button
-              type="button"
-              className="lock-screen__recover"
-              onClick={handleSwitchToMasterPassword}
-              disabled={busy}
+
+            <div
+              className={`lock-screen__pin${pinShake ? " lock-screen__pin--shake" : ""}`}
+              onClick={() => pinInputRef.current?.focus()}
+              role="presentation"
             >
-              Войти по мастер-паролю
-            </button>
+              <input
+                ref={pinInputRef}
+                id="lock-screen-pin"
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={PIN_MAX_LENGTH}
+                className="lock-screen__pin-input"
+                aria-label="PIN-код"
+                value={pinValue}
+                onChange={(e) => handlePinChange(e.currentTarget.value.replace(/\D/g, ""))}
+                autoFocus
+                disabled={busy}
+              />
+              {Array.from({ length: visiblePinCellCount(pinValue.length) }, (_, i) => (
+                <span
+                  key={i}
+                  aria-hidden="true"
+                  className={
+                    "lock-screen__pin-cell" +
+                    (i < pinValue.length ? " lock-screen__pin-cell--filled" : "") +
+                    (i === pinValue.length && !busy ? " lock-screen__pin-cell--next" : "")
+                  }
+                />
+              ))}
+            </div>
+
+            {/*
+              Ошибка и запасной путь вынесены ИЗ ПОТОКА (position: absolute в
+              CSS). Иначе их появление растягивало бы колонку, а колонка
+              центрирована по вертикали - логотип и ячейки уезжали бы вверх на
+              каждой неверной попытке. Ошибка обязана появляться под ними, не
+              трогая ничего выше.
+            */}
             {error && (
-              <p className="lock-screen__error" role="alert">
-                {error}
-              </p>
+              <div className="lock-screen__pin-fallback">
+                <p className="lock-screen__error" role="alert">
+                  {error}
+                </p>
+                <button
+                  type="button"
+                  className="lock-screen__recover"
+                  onClick={handleSwitchToMasterPassword}
+                  disabled={busy}
+                >
+                  Войти по мастер-паролю
+                </button>
+              </div>
             )}
           </form>
         )}
@@ -1451,6 +1708,23 @@ export function LockScreen({ vaultPath, onUnlock, onPickAlternatePath }: LockScr
             >
               {busy ? DERIVING_LABEL : "Открыть"}
             </button>
+            {/*
+              Возврат к PIN-коду. Без него переход на мастер-пароль был дверью
+              в одну сторону: ни Escape, ни крестика, ни кнопки - выйти можно
+              было только перезапуском приложения (найдено пользователем
+              17.08.2026). Показывается только когда возвращаться есть куда,
+              то есть когда PIN действительно настроен.
+            */}
+            {pinWrap && (
+              <button
+                type="button"
+                className="lock-screen__recover"
+                onClick={handleSwitchToPin}
+                disabled={busy}
+              >
+                Вернуться к PIN-коду
+              </button>
+            )}
             {error && (
               <div className="lock-screen__error" role="alert">
                 <p>{error}</p>

@@ -1,9 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Разрешения основного окна и окна быстрого доступа. Метка `quick` обязана быть в списке: разрешения выдаются ПО ОКНАМ, и без неё маленькое окно не может ни спрятаться, ни перетащиться, ни обменяться событиями с основным - при этом ошибок не видно, всё просто молча не работает.",
   "windows": [
-    "main"
+    "main",
+    "quick"
   ],
   "permissions": [
     "core:default",

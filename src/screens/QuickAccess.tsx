@@ -17,13 +17,19 @@
  *    чтобы уйти в браузер и вставить пароль. Вместо этого есть крестик и
  *    самозакрытие по бездействию (`IDLE_CLOSE_MS`).
  *
- * 2. После копирования окно прячется мгновенно, но ПРОЦЕСС ЖИВЁТ до тех пор,
- *    пока не сработает автоочистка буфера обмена. Иначе получилось бы, что
- *    быстрый режим тихо ломает главную защитную механику приложения: таймер
- *    очистки живёт внутри процесса, и завершись процесс сразу - пароль остался
- *    бы в буфере навсегда.
+ * 2. Копирование НЕ закрывает окно. Первая версия закрывала, и это оказалось
+ *    прямой ошибкой замысла: логин и пароль нужны подряд, а после копирования
+ *    логина окно исчезало, и ради второго поля приходилось вызывать всё
+ *    заново (найдено пользователем 17.08.2026). Окно висит поверх остальных,
+ *    поэтому вставить и вернуться к нему можно не теряя его из виду.
  *
- * 3. Режим работает только с настроенным PIN. Мастер-пароль это пять миллионов
+ * 3. Когда окно всё-таки закрывают, ПРОЦЕСС ЖИВЁТ до тех пор, пока не
+ *    сработает автоочистка буфера обмена. Иначе быстрый режим тихо ломал бы
+ *    главную защитную механику приложения: таймер очистки живёт внутри
+ *    процесса, и завершись процесс сразу - пароль остался бы в буфере
+ *    навсегда.
+ *
+ * 4. Режим работает только с настроенным PIN. Мастер-пароль это пять миллионов
  *    итераций и несколько секунд ожидания, что убивает саму идею «быстро».
  */
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
@@ -52,6 +58,10 @@ export const IDLE_CLOSE_MS = 60_000;
  * помещается, а листать длинный список в режиме «быстро» никто не станет:
  * проще дописать буквы. */
 export const MAX_RESULTS = 7;
+
+/** Сколько держится подтверждение «скопировано». Дольше, чем в основном окне:
+ * человек в этот момент смотрит в браузер, а не сюда. */
+export const COPIED_HINT_MS = 4000;
 
 const VAULT_FILENAME = "vault.dat";
 
@@ -111,10 +121,32 @@ export function QuickAccess() {
   const searchRef = useRef<HTMLInputElement>(null);
   const pinInputRef = useRef<HTMLInputElement>(null);
   const idleTimerRef = useRef<number | null>(null);
+  const copiedTimerRef = useRef<number | null>(null);
 
-  /** Закрыть окно и завершить процесс. Единственная точка выхода. */
+  /**
+   * Когда сработает автоочистка буфера, если что-то копировали. `0` - копий не
+   * было и ждать нечего.
+   */
+  const clearAtRef = useRef(0);
+
+  /**
+   * Закрыть окно и завершить процесс. Единственная точка выхода.
+   *
+   * Окно прячется сразу, а процесс доживает до автоочистки буфера: таймер
+   * очистки живёт внутри этого процесса, и завершись он раньше - скопированный
+   * пароль остался бы в буфере обмена навсегда.
+   */
   const quit = useCallback(() => {
-    void getCurrentWindow().destroy();
+    const win = getCurrentWindow();
+    const waitMs = Math.max(0, clearAtRef.current - Date.now());
+    if (waitMs === 0) {
+      void win.destroy();
+      return;
+    }
+    void win.hide();
+    // Запас в секунду: очистка ставится таким же таймером, и завершиться ровно
+    // в его миллисекунду значит иногда не успеть.
+    window.setTimeout(() => void win.destroy(), waitMs + 1000);
   }, []);
 
   /** Любое действие человека отодвигает самозакрытие. */
@@ -127,6 +159,7 @@ export function QuickAccess() {
     touch();
     return () => {
       if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
     };
   }, [touch]);
 
@@ -226,19 +259,21 @@ export function QuickAccess() {
   }
 
   /**
-   * Скопировать и уйти.
+   * Скопировать значение. Окно остаётся открытым - см. пункт 2 в комментарии
+   * модуля.
    *
-   * Окно прячется сразу, а процесс доживает до автоочистки буфера - см.
-   * комментарий модуля. Дополнительный запас в секунду: очистка ставится тем же
-   * таймером, и завершиться ровно в его миллисекунду значит иногда не успеть.
+   * Подтверждение показывается в строке подсказок и держится несколько секунд:
+   * человек в этот момент смотрит в другое окно, и мгновенная вспышка прошла бы
+   * мимо него.
    */
-  async function copyAndLeave(value: string, label: string) {
+  async function copyValue(value: string, label: string) {
     try {
       await copyWithAutoClear(value);
+      clearAtRef.current = Date.now() + CLIPBOARD_CLEAR_MS;
       setCopied(label);
-      const win = getCurrentWindow();
-      await win.hide();
-      window.setTimeout(quit, CLIPBOARD_CLEAR_MS + 1000);
+      touch();
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopied(null), COPIED_HINT_MS);
     } catch (err) {
       console.error("QuickAccess: не удалось скопировать значение", err);
       setCopied(null);
@@ -252,7 +287,7 @@ export function QuickAccess() {
     if (!field) return;
     try {
       const code = await totpCode(parseOtpauth(field.value), Date.now() / 1000);
-      await copyAndLeave(code, "код");
+      await copyValue(code, "код");
     } catch (err) {
       console.error("QuickAccess: не удалось посчитать код двухфакторки", err);
     }
@@ -282,7 +317,7 @@ export function QuickAccess() {
       const item = results[selected];
       if (!item) return;
       const field = e.shiftKey ? secondaryField(item) : primaryField(item);
-      if (field) void copyAndLeave(field.value, e.shiftKey ? "логин" : "пароль");
+      if (field) void copyValue(field.value, e.shiftKey ? "логин" : "пароль");
       return;
     }
   }
@@ -375,7 +410,7 @@ export function QuickAccess() {
                       className="quick__row-btn"
                       onClick={() => {
                         const f = secondaryField(item);
-                        if (f) void copyAndLeave(f.value, "логин");
+                        if (f) void copyValue(f.value, "логин");
                       }}
                       title="Скопировать логин"
                       aria-label="Скопировать логин"
@@ -389,19 +424,21 @@ export function QuickAccess() {
                       className="quick__row-btn quick__row-btn--icon"
                       onClick={() => {
                         const f = primaryField(item);
-                        if (f) void copyAndLeave(f.value, "пароль");
+                        if (f) void copyValue(f.value, "пароль");
                       }}
                       title="Скопировать пароль"
                       aria-label="Скопировать пароль"
                     >
-                      {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+                      {copied === "пароль" && index === selected ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
                     </button>
                   )}
                 </span>
               </li>
             ))}
           </ul>
-          <p className="quick__hint">{copied ? `Скопирован ${copied}` : PRIMARY_HINT}</p>
+          <p className={`quick__hint${copied ? " quick__hint--copied" : ""}`}>
+            {copied ? `Скопирован ${copied}. Окно остаётся открытым, Esc закроет.` : PRIMARY_HINT}
+          </p>
         </>
       )}
     </div>

@@ -20,6 +20,7 @@
 .app-modal-overlay,
 .editor__modal-overlay,
 .record-card__modal-overlay,
+.settings__modal-overlay,
 .import-export-panel__modal-overlay {
   position: fixed;
   inset: 0;
@@ -41,6 +42,7 @@
 .app-modal,
 .editor__modal,
 .record-card__modal,
+.settings__modal,
 .import-export-panel__modal {
   width: min(420px, 90vw);
   padding: var(--sp-6);
@@ -56,6 +58,7 @@
 .app-modal h2,
 .editor__modal h2,
 .record-card__modal h2,
+.settings__modal h2,
 .import-export-panel__modal h2 {
   margin: 0 0 var(--sp-3);
   color: var(--text-strong);
@@ -75,6 +78,7 @@
 .app-modal__actions,
 .editor__modal-actions,
 .record-card__modal-actions,
+.settings__modal-actions,
 .import-export-panel__modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -144,4 +148,17 @@
   background: var(--surface-hover);
   border-color: var(--danger);
   color: var(--danger);
+}
+
+/* Длинные объяснения в модалке настроек: их читают целиком, поэтому нужна
+   нормальная типографика абзаца, а не подпись мелким шрифтом. */
+.settings__modal p {
+  margin: 0 0 var(--sp-3);
+  color: var(--text);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+}
+
+.settings__modal p:last-of-type {
+  margin-bottom: var(--sp-4);
 }

@@ -29,7 +29,7 @@
  * JSX-компонент проверен глазами и сборкой (`tsc`/`vite build`), не
  * автотестом.
  */
-import { useEffect, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { VaultStore, type Item } from "../lib/vaultStore";
 import { deriveKey, encrypt, decrypt, DecryptError } from "../lib/crypto";
 import { serializeContainer, parseContainer, FormatError, type VaultHeader } from "../lib/vaultFormat";
@@ -37,6 +37,7 @@ import { readVault } from "../lib/tauriApi";
 import { readSettings, updateSettings, DEFAULT_AUTO_LOCK_TIMEOUT_MS } from "../lib/settingsConfig";
 import { isValidPinFormat, setUpPin, resetPinLockout, PIN_MAX_LENGTH } from "../lib/pinLock";
 import { PasswordField } from "../components/PasswordField";
+import { useModalFocus } from "../hooks/useModalFocus";
 import {
   fetchLatestRelease,
   isNewer,
@@ -378,6 +379,18 @@ export function Settings({
   const [timeoutError, setTimeoutError] = useState<string | null>(null);
   const [timeoutSaved, setTimeoutSaved] = useState(false);
 
+  /**
+   * Какое подробное объяснение открыто.
+   *
+   * Длинные тексты вынесены из карточек в модалку: в разделе достаточно одной
+   * фразы, а тому, кто хочет разобраться, подробности открываются по кнопке.
+   * До этого раздел «Обновления» занимал 600 пикселей высоты и вытеснял собой
+   * половину настроек (замечено пользователем 17.08.2026).
+   */
+  const [details, setDetails] = useState<null | "quick" | "updates">(null);
+  const detailsRef = useRef<HTMLDivElement>(null);
+  useModalFocus(detailsRef, details !== null);
+
   // --- обновления ---
   const [updateEnabled, setUpdateEnabled] = useState(false);
   const [updateBusy, setUpdateBusy] = useState(false);
@@ -604,9 +617,16 @@ export function Settings({
    * (каждое поле сохраняется своей собственной кнопкой), поэтому закрытие
    * не нуждается в диалоге подтверждения, в отличие от Editor.tsx. */
   function handleSettingsKeyDown(e: KeyboardEvent<HTMLElement>) {
-    if (e.key === "Escape") {
-      onClose();
+    if (e.key !== "Escape") return;
+    // Сначала закрывается подробное объяснение: оно открылось последним и лежит
+    // поверх. Иначе Escape уносил бы из настроек целиком, оставив модалку
+    // висеть над списком записей.
+    if (details) {
+      e.stopPropagation();
+      setDetails(null);
+      return;
     }
+    onClose();
   }
 
   return (
@@ -619,6 +639,11 @@ export function Settings({
       </header>
 
       <div className="settings__body">
+        {/* Внутренняя обёртка нужна ради упаковки колонок: прокрутка живёт на
+            `settings__body`, а многоколоночная раскладка обязана лежать на
+            элементе со свободной высотой - иначе она упирается в высоту окна и
+            уводит карточки вбок. */}
+        <div className="settings__columns">
         <form className="settings__section" onSubmit={handleChangePassword}>
           <h2 className="settings__section-title">Мастер-пароль</h2>
           <label className="settings__label" htmlFor="settings-current-password">
@@ -706,63 +731,23 @@ export function Settings({
 
         <section className="settings__section">
           <h2 className="settings__section-title">Быстрый доступ</h2>
-          {/*
-            Раздел существует ровно затем, чтобы человек узнал о самой
-            возможности. Настроить её из приложения нельзя: сочетание клавиш
-            живёт в свойствах ярлыка Windows, а не в программе - именно поэтому
-            приложению не нужно висеть в памяти. Но раз настройка снаружи, то
-            рассказать о ней обязано приложение (иначе про быстрый доступ знал
-            бы только тот, кто читал README).
-          */}
           <p className="settings__hint">
-            Быстрый доступ - маленькое окно, которое открывается по сочетанию клавиш:
-            ввёл PIN, набрал несколько букв, Enter кладёт пароль в буфер обмена, окно
-            исчезает. Shift+Enter копирует логин, Escape закрывает. У записей с
-            двухфакторкой рядом есть кнопка для кода.
+            Маленькое окно по сочетанию клавиш: PIN, несколько букв, Enter - пароль в
+            буфере. Сочетание назначается в свойствах ярлыка Windows, не здесь.
           </p>
-          <p className="settings__hint">
-            Сочетание назначается средствами Windows, а не здесь: приложение не висит
-            в памяти постоянно и перехватить клавиши само не может. В меню «Пуск» найдите
-            ярлык <span className="settings__url">cryptodermo (быстрый доступ)</span>,
-            нажмите на нём правой кнопкой, откройте «Свойства» и в поле «Быстрый вызов»
-            нажмите желаемое сочетание, например Ctrl+Alt+C.
-          </p>
-          <p className="settings__hint">
-            Если вы пользуетесь портативной версией, ярлыка нет - создайте его сами на
-            <span className="settings__url"> cryptodermo.exe</span>, допишите в поле
-            «Объект» через пробел <span className="settings__url">--quick</span> и
-            назначьте сочетание там же.
-          </p>
-          <p className="settings__hint">
-            {pinConfigured
-              ? "PIN настроен, быстрый доступ будет работать."
-              : "Сейчас быстрый доступ не заработает: он требует PIN-кода. Мастер-пароль занимает несколько секунд на разбор ключа, что противоречит самой идее быстрого окна."}
-          </p>
+          <div className="settings__row">
+            <button type="button" className="settings__link-btn" onClick={() => setDetails("quick")}>
+              Как назначить сочетание
+            </button>
+            <span className="settings__status">{pinConfigured ? "" : "Нужен PIN-код"}</span>
+          </div>
         </section>
 
         <section className="settings__section">
           <h2 className="settings__section-title">Обновления</h2>
-          {/*
-            Единственное место, где приложение выходит в сеть. Объяснение
-            развёрнутое и стоит ДО галочки, а не мелким шрифтом после: человек
-            должен понимать, на что соглашается, до того как согласился.
-          */}
           <p className="settings__hint">
-            Всё остальное в программе работает без интернета. Проверка обновлений - единственное
-            исключение, и по умолчанию она выключена.
-          </p>
-          <p className="settings__hint">
-            Если включить, приложение раз в сутки спрашивает у GitHub номер последней выложенной
-            версии. Уходит только этот вопрос: ни база, ни её размер, ни названия записей, ни путь
-            к файлу в запрос не попадают и попасть не могут. GitHub при этом видит то же, что видит
-            любой сайт при открытии страницы - ваш IP-адрес и то, что с него спросили страницу
-            релизов cryptodermo. Номер вашей версии не передаётся: сравнение происходит уже на
-            вашей машине, после ответа.
-          </p>
-          <p className="settings__hint">
-            Скачивание и установка - вручную. Программа не умеет заменять сама себя, и это
-            сделано намеренно: приложение, способное подменить свой исполняемый файл, - лишний
-            путь внутрь для того, кто получит доступ к учётной записи GitHub.
+            Единственное место, где приложение выходит в сеть. По умолчанию выключено;
+            уходит только вопрос к GitHub о номере последней версии, без данных базы.
           </p>
           <label className="settings__checkbox">
             <input
@@ -770,7 +755,7 @@ export function Settings({
               checked={updateEnabled}
               onChange={(e) => void handleToggleUpdateCheck(e.currentTarget.checked)}
             />
-            <span>Проверять обновления автоматически, раз в сутки</span>
+            <span>Проверять раз в сутки</span>
           </label>
           <div className="settings__row">
             <button
@@ -781,10 +766,13 @@ export function Settings({
             >
               {updateBusy ? "Проверяю..." : "Проверить сейчас"}
             </button>
-            <span className="settings__status" aria-live="polite">
-              {updateResult?.kind === "none" ? "У вас последняя версия" : ""}
-            </span>
+            <button type="button" className="settings__link-btn" onClick={() => setDetails("updates")}>
+              Что уходит в сеть
+            </button>
           </div>
+          <span className="settings__status" aria-live="polite">
+            {updateResult?.kind === "none" ? "У вас последняя версия" : ""}
+          </span>
           {updateResult?.kind === "found" && (
             <p className="settings__hint" role="status">
               Доступна версия {updateResult.version}.{" "}
@@ -958,7 +946,80 @@ export function Settings({
             </dl>
           </section>
         )}
+        </div>
       </div>
+
+      {details && (
+        <div className="settings__modal-overlay" role="presentation">
+          <div
+            ref={detailsRef}
+            className="settings__modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-details-title"
+          >
+            {details === "quick" ? (
+              <>
+                <h2 id="settings-details-title">Быстрый доступ</h2>
+                <p>
+                  Окно открывается по сочетанию клавиш: вводите PIN, набираете несколько
+                  букв, Enter кладёт пароль в буфер обмена. Shift+Enter копирует логин, у
+                  записей с двухфакторкой рядом есть кнопка для кода. Окно остаётся
+                  открытым, пока вы его не закроете или пока не пройдёт минута
+                  бездействия.
+                </p>
+                <p>
+                  Сочетание назначается средствами Windows, а не в приложении: программа
+                  не висит в памяти постоянно и перехватить клавиши сама не может. В меню
+                  «Пуск» найдите ярлык «cryptodermo (быстрый доступ)», нажмите правой
+                  кнопкой, откройте «Свойства» и в поле «Быстрый вызов» нажмите желаемое
+                  сочетание, например Ctrl+Alt+C.
+                </p>
+                <p>
+                  У портативной версии ярлыка нет - создайте его сами на cryptodermo.exe,
+                  допишите в поле «Объект» через пробел --quick и назначьте сочетание там
+                  же.
+                </p>
+                <p>
+                  Режим требует PIN-кода: разбор мастер-пароля занимает несколько секунд,
+                  что противоречит самой идее быстрого окна.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 id="settings-details-title">Что уходит в сеть</h2>
+                <p>
+                  Всё остальное в программе работает без интернета. Проверка обновлений -
+                  единственное исключение, и по умолчанию она выключена.
+                </p>
+                <p>
+                  Если включить, приложение раз в сутки спрашивает у GitHub номер
+                  последней выложенной версии. Уходит только этот вопрос: ни база, ни её
+                  размер, ни названия записей, ни путь к файлу в запрос не попадают и
+                  попасть не могут.
+                </p>
+                <p>
+                  GitHub при этом видит то же, что видит любой сайт при открытии страницы:
+                  ваш IP-адрес и то, что с него спросили страницу релизов cryptodermo.
+                  Номер вашей версии не передаётся - сравнение происходит уже на вашей
+                  машине, после ответа.
+                </p>
+                <p>
+                  Скачивание и установка вручную. Программа не умеет заменять сама себя, и
+                  это сделано намеренно: приложение, способное подменить свой исполняемый
+                  файл, - лишний путь внутрь для того, кто получит доступ к учётной записи
+                  GitHub.
+                </p>
+              </>
+            )}
+            <div className="settings__modal-actions">
+              <button type="button" onClick={() => setDetails(null)}>
+                Понятно
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

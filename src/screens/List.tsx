@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import type { Item, ItemType, VaultStore } from "../lib/vaultStore";
 import { RecordCard, TYPE_LABELS, hasStaleSecretField } from "../components/RecordCard";
 import { StatusDot } from "../components/StatusDot";
+import { PlusIcon } from "../components/icons";
 import "./List.css";
 
 /**
@@ -153,6 +154,18 @@ function formatRelativeTime(iso: string, now: number): string {
   return `${years} г назад`;
 }
 
+/**
+ * Подпись поиска и кнопки добавления.
+ *
+ * Колонка списка узкая (около 360px), и подпись «Добавить запись» съедала в
+ * ней 144px из 358 - в остатке плейсхолдер обрезался на полуслове
+ * (пользователь прислал скриншот 17.08.2026). Кнопка стала иконкой с тем же
+ * текстом в подсказке и в имени для экранной читалки, а перечисление того,
+ * где именно ищем, сокращено до того, что физически помещается.
+ */
+const SEARCH_PLACEHOLDER = "Поиск по названию и тегам";
+const ADD_LABEL = "Добавить запись";
+
 export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged, refreshToken, typeFilter, withAttachments }: ListProps) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -298,15 +311,21 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
           <input
             type="search"
             className="list__search-input"
-            placeholder="Поиск по названию, тегам, полям…"
+            placeholder={SEARCH_PLACEHOLDER}
             aria-label="Поиск записей"
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
             autoFocus
           />
           {onCreateNew && (
-            <button type="button" className="list__add-btn" onClick={onCreateNew}>
-              Добавить запись
+            <button
+              type="button"
+              className="list__add-btn"
+              onClick={onCreateNew}
+              aria-label={ADD_LABEL}
+              title={ADD_LABEL}
+            >
+              <PlusIcon />
             </button>
           )}
         </div>

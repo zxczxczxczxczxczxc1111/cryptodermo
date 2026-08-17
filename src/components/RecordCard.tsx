@@ -421,7 +421,8 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
           {item.fields.some((f) => f.secret) && (
             <p className="record-card__clipboard-note">
               Скопированное значение исчезает из буфера обмена через 30 секунд. История буфера
-              обмена Windows (Win+V) может сохранить его отдельно от приложения.
+              обмена Windows (Win+V) может сохранить его отдельно от приложения - её отключают
+              в «Параметры → Система → Буфер обмена → Журнал буфера обмена».
             </p>
           )}
 

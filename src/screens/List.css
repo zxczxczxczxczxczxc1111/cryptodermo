@@ -79,7 +79,17 @@
    как приглашение к действию именно на пустом состоянии, R87). */
 .list__add-btn {
   flex: none;
-  padding: var(--sp-2) var(--sp-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Квадрат под иконку. Подпись «Добавить запись» здесь была шире, чем
+     оставалось поиску (144px из 358 в колонке), и плейсхолдер обрезался. */
+  width: 38px;
+  /* Высота тянется за полем поиска, а не задаётся числом: у поля свой
+     line-height, и любое фиксированное значение рано или поздно разойдётся
+     с ним на пару пикселей. */
+  align-self: stretch;
+  padding: 0;
   border-radius: var(--r-field);
   border: var(--border-w) solid var(--border);
   background: var(--surface-hover);

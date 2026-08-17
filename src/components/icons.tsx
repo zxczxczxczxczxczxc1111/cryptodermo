@@ -70,3 +70,12 @@ export function CheckIcon({ size }: { size?: number }) {
     </Glyph>
   );
 }
+
+/** Плюс - добавление записи. */
+export function PlusIcon({ size }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <path d="M12 5v14M5 12h14" />
+    </Glyph>
+  );
+}

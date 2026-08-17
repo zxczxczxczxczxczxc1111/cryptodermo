@@ -34,6 +34,8 @@
     "core:webview:allow-create-webview-window",
     "core:event:allow-emit",
     "core:event:allow-listen",
-    "core:window:allow-set-skip-taskbar"
+    "core:window:allow-set-skip-taskbar",
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-text"
   ]
 }

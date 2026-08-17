@@ -63,6 +63,10 @@ export default defineConfig(async ({ mode }) => ({
               replacement: mockModulePath("global-shortcut"),
             },
             { find: /^@tauri-apps\/plugin-autostart$/, replacement: mockModulePath("autostart") },
+            {
+              find: /^@tauri-apps\/plugin-clipboard-manager$/,
+              replacement: mockModulePath("clipboard-manager"),
+            },
           ],
         }
       : undefined,

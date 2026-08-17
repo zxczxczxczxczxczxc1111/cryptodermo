@@ -86,6 +86,10 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // Буфер обмена через плагин, а не через браузерный `navigator.clipboard`:
+        // тот требует, чтобы документ был в фокусе, а копирование по просьбе
+        // маленького окна происходит в основном, у которого фокуса как раз нет.
+        .plugin(tauri_plugin_clipboard_manager::init())
         // Глобальное сочетание регистрируется на стороне фронта: там же лежит
         // и настройка, и решение, что делать по нажатию.
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

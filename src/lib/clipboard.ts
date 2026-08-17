@@ -1,3 +1,5 @@
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+
 /**
  * Буфер обмена с автоочисткой (R48, R48.1). Общая утилита, используемая
  * тикетом 06 (очистка при блокировке) и тикетом 07 (копирование значения
@@ -6,6 +8,14 @@
  *
  * Секретное значение никогда не попадает в постоянное хранилище через этот
  * модуль - только в буфер обмена ОС, на ограниченное время.
+ *
+ * Запись идёт через плагин Tauri, а НЕ через `navigator.clipboard`. Разница
+ * принципиальная и обнаружилась на живом запуске 17.08.2026: браузерный буфер
+ * требует, чтобы документ был в фокусе, и отказывает с `NotAllowedError`, если
+ * это не так. А копирование по просьбе маленького окна происходит в основном
+ * окне, у которого фокуса в этот момент как раз нет - в интерфейсе это
+ * выглядело как «не удалось скопировать» на любом поле. Плагин пишет в буфер
+ * средствами системы и от фокуса не зависит.
  */
 
 /** Через сколько буфер обмена очищается сам. Экспортируется: окно быстрого
@@ -31,9 +41,9 @@ function cancelPendingClear(): void {
 
 /** Записывает пустую строку в буфер обмена - фактическая очистка. */
 function clearClipboardNow(): void {
-  navigator.clipboard
-    .writeText("")
-    .catch((err) => console.error("clipboard: не удалось очистить буфер обмена", err));
+  writeText("").catch((err) =>
+    console.error("clipboard: не удалось очистить буфер обмена", err),
+  );
 }
 
 export async function copyWithAutoClear(
@@ -42,7 +52,7 @@ export async function copyWithAutoClear(
 ): Promise<void> {
   cancelPendingClear();
 
-  await navigator.clipboard.writeText(value);
+  await writeText(value);
   hasOwnValue = true;
 
   clearTimer = setTimeout(() => {

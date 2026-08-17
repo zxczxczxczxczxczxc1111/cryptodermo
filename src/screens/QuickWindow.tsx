@@ -132,9 +132,9 @@ export function QuickWindow() {
     void emit(QUICK_EVENTS.query, { query: next });
   }
 
-  function copy(id: string, kind: QuickCopyKind, field?: string) {
+  function copy(id: string, kind: QuickCopyKind, index?: number) {
     touch();
-    void emit(QUICK_EVENTS.copy, { id, kind, field });
+    void emit(QUICK_EVENTS.copy, { id, kind, index });
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
@@ -163,9 +163,9 @@ export function QuickWindow() {
       const item = results[selected];
       if (!item) return;
       if (e.shiftKey) {
-        if (item.loginField) copy(item.id, "login", item.loginField);
+        if (item.loginIndex !== null) copy(item.id, "login", item.loginIndex);
       } else {
-        copy(item.id, "password", item.passwordField);
+        copy(item.id, "password", item.passwordIndex);
       }
     }
   }
@@ -196,7 +196,7 @@ export function QuickWindow() {
           <li
             // Индекс в ключе обязателен: в записи бывают два секретных поля с
             // одинаковым именем, и без него ключи совпадали бы.
-            key={`${item.id}:${item.passwordField}:${index}`}
+            key={`${item.id}:${item.passwordIndex}`}
             className={`qwin__row${picking && index === selected ? " qwin__row--active" : ""}`}
             onMouseEnter={() => {
               setSelected(index);
@@ -210,13 +210,13 @@ export function QuickWindow() {
               {item.detail && <span className="qwin__row-detail">{item.detail}</span>}
             </span>
             <span className="qwin__row-actions">
-              {item.loginField && (
+              {item.loginIndex !== null && (
                 <button
                   type="button"
                   className="qwin__btn"
                   aria-label="Скопировать логин"
                   title="Скопировать логин"
-                  onClick={() => copy(item.id, "login", item.loginField ?? undefined)}
+                  onClick={() => copy(item.id, "login", item.loginIndex ?? undefined)}
                 >
                   {copied === "логин" && index === selected && picking ? <CheckIcon size={14} /> : <UserIcon size={14} />}
                 </button>
@@ -226,7 +226,7 @@ export function QuickWindow() {
                 className="qwin__btn"
                 aria-label="Скопировать пароль"
                 title="Скопировать пароль"
-                onClick={() => copy(item.id, "password", item.passwordField)}
+                onClick={() => copy(item.id, "password", item.passwordIndex)}
               >
                 {copied === "пароль" && index === selected && picking ? <CheckIcon size={14} /> : <KeyIcon size={14} />}
               </button>

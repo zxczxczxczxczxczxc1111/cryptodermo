@@ -20,8 +20,8 @@ describe("buildQuickRows", () => {
       },
     ]);
     expect(rows).toHaveLength(2);
-    expect(rows.map((r) => r.passwordField)).toEqual(["Пароль 1", "Пароль 2"]);
-    expect(rows.map((r) => r.loginField)).toEqual(["Почта 1", "Почта 2"]);
+    expect(rows.map((r) => r.passwordIndex)).toEqual([1, 3]);
+    expect(rows.map((r) => r.loginIndex)).toEqual([0, 2]);
   });
 
   it("уточняет строку ЗНАЧЕНИЕМ логина, а не именем поля", () => {
@@ -55,7 +55,7 @@ describe("buildQuickRows", () => {
         fields: [f("Логин A", "a"), f("Пароль A", "pa", true), f("Логин B", "b"), f("Пароль B", "pb", true)],
       },
     ]);
-    expect(rows[1].loginField).toBe("Логин B");
+    expect(rows[1].loginIndex).toBe(2);
   });
 
   it("показывает запись, только если в ней есть заполненный пароль", () => {
@@ -80,7 +80,7 @@ describe("buildQuickRows", () => {
       },
     ]);
     expect(rows).toHaveLength(1);
-    expect(rows[0].passwordField).toBe("Пароль");
+    expect(rows[0].passwordIndex).toBe(1);
     expect(rows[0].hasTotp).toBe(true);
   });
 });
@@ -152,7 +152,7 @@ describe("buildQuickRows с аккаунтами", () => {
       },
     ]);
     expect(rows).toHaveLength(2);
-    expect(rows[1].passwordField).toBe("Общий пароль");
+    expect(rows[1].passwordIndex).toBe(2);
   });
 });
 

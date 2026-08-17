@@ -1021,7 +1021,35 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   }
 
   return (
-    <section className="editor" onKeyDown={handleEditorKeyDown}>
+    <section
+      className={`editor${dropActive ? " editor--drop" : ""}`}
+      onKeyDown={handleEditorKeyDown}
+      /*
+        Приёмник файлов - ВЕСЬ редактор, а не только секция вложений. Секция
+        занимает нижнюю треть экрана, и бросать надо было точно в неё: файл над
+        заметкой просто не долетал, а почему - непонятно (замечено
+        пользователем 17.08.2026).
+      */
+      onDragOver={(e) => {
+        // Без preventDefault браузер откроет брошенный файл вместо того,
+        // чтобы отдать его обработчику.
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        if (!dropActive) setDropActive(true);
+      }}
+      onDragLeave={(e) => {
+        // Уход на дочерний элемент внутри той же области - не уход: без этой
+        // проверки подсветка мигала бы при движении курсора.
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setDropActive(false);
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+        e.preventDefault();
+        void handleDropFiles(e.dataTransfer.files);
+      }}
+    >
       <header className="editor__header">
         <div className="editor__type-selector" role="radiogroup" aria-label="Тип записи">
           {ITEM_TYPES.map((t) => (
@@ -1298,28 +1326,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             }}
           />
         </div>
-        <div
-          className={`editor__section${dropActive ? " editor__section--drop" : ""}`}
-          onDragOver={(e) => {
-            // Без preventDefault браузер откроет брошенный файл вместо того,
-            // чтобы отдать его обработчику.
-            if (!e.dataTransfer.types.includes("Files")) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy";
-            if (!dropActive) setDropActive(true);
-          }}
-          onDragLeave={(e) => {
-            // Уход на дочерний элемент внутри той же области - не уход:
-            // без этой проверки подсветка мигала бы при движении курсора.
-            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-            setDropActive(false);
-          }}
-          onDrop={(e) => {
-            if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
-            e.preventDefault();
-            void handleDropFiles(e.dataTransfer.files);
-          }}
-        >
+        <div className="editor__section">
           <div className="editor__section-header">
             <span className="editor__label">Вложения</span>
             <button
@@ -1339,7 +1346,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
               разойдутся при первой правке, и приложение начнёт обещать то,
               чего не делает. */}
           <p className="editor__hint">
-            {previewSupportHint(MAX_ATTACHMENT_SIZE_BYTES)} Файлы можно перетащить прямо сюда.
+            {previewSupportHint(MAX_ATTACHMENT_SIZE_BYTES)} Файл можно бросить в любое место редактора.
           </p>
 
           {form.attachments.length === 0 ? (

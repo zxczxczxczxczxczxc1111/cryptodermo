@@ -48,10 +48,10 @@ export function useQuickWindowServer(store: VaultStore | null): void {
           try {
             let value: string | null = null;
             if (kind === "password" || kind === "login") {
-              // Поле называется явно: «первое подходящее» - это ровно та
-              // ошибка, из-за которой в записи с двумя парами копировалась
-              // всегда первая.
-              value = item.fields.find((f) => f.name === event.payload.field)?.value ?? null;
+              // Поле берётся по позиции: имена в записи с аккаунтами
+              // повторяются, и поиск по имени находил чужое поле.
+              const at = event.payload.index;
+              value = typeof at === "number" ? (item.fields[at]?.value ?? null) : null;
             } else {
               const field = totpField(item);
               // Код считается здесь же: маленькое окно не должно получать

@@ -53,10 +53,17 @@ export interface QuickResult {
   /** Уточнение под названием: имя поля, когда пар в записи больше одной.
    * Пустая строка - уточнять нечего. */
   detail: string;
-  /** Имя секретного поля, которое копируется по Enter. */
-  passwordField: string;
-  /** Имя поля логина для этой пары, если оно есть. */
-  loginField: string | null;
+  /**
+   * ПОЗИЦИЯ секретного поля в записи, а не его имя.
+   *
+   * Имя перестало быть уникальным, как только у записи появились аккаунты: и в
+   * «Аккаунт 1», и в «Аккаунт 2» поле называется «Пароль». Поиск по имени
+   * находил первое совпадение и копировал чужой пароль (найдено пользователем
+   * 17.08.2026).
+   */
+  passwordIndex: number;
+  /** Позиция поля логина для этой пары, если оно есть. */
+  loginIndex: number | null;
   /**
    * ЗНАЧЕНИЕ логина - им и различают строки.
    *
@@ -83,10 +90,9 @@ export interface QuickResultsPayload {
 export interface QuickCopyPayload {
   id: string;
   kind: QuickCopyKind;
-  /** Конкретное поле. Обязательно для пароля и логина: в записи их может быть
-   * несколько, и «первое подходящее» - это как раз та ошибка, из-за которой
-   * строки стали парами. */
-  field?: string;
+  /** Позиция поля в записи. Обязательна для пароля и логина: имена в записи с
+   * аккаунтами повторяются, и по имени находилось чужое поле. */
+  index?: number;
 }
 
 export interface QuickCopiedPayload {
@@ -177,8 +183,8 @@ export function buildQuickRows(items: ItemLike[]): QuickResult[] {
           id: item.id,
           title: item.title,
           detail: buildDetail(item.title, name, login ? login.value : null),
-          passwordField: secret.name,
-          loginField: login ? login.name : null,
+          passwordIndex: item.fields.indexOf(secret),
+          loginIndex: login ? item.fields.indexOf(login) : null,
           loginValue: login ? login.value : null,
           hasTotp: inGroup.some((f) => isTotpValue(f.value)),
         });
@@ -219,8 +225,8 @@ export function buildQuickRows(items: ItemLike[]): QuickResult[] {
           login && login.value.trim() !== "" ? login.value : null,
           secrets.length > 1 ? secret.name : null,
         ),
-        passwordField: secret.name,
-        loginField: login ? login.name : null,
+        passwordIndex: original.fields.indexOf(secret),
+        loginIndex: login ? original.fields.indexOf(login) : null,
         loginValue: login && login.value.trim() !== "" ? login.value : null,
         hasTotp,
       });

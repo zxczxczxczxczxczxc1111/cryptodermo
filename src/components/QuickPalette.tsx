@@ -127,13 +127,13 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
     }
   }
 
-  /** Значение конкретного поля записи. Поле называется явно: в записи может
-   * быть несколько паролей, и «первое подходящее» - та самая ошибка, из-за
-   * которой строки стали парами. */
-  function fieldValue(id: string, name: string | null): string | null {
-    if (!name) return null;
+  /** Значение поля по ПОЗИЦИИ. Имя не годится: у записи с аккаунтами поля
+   * называются одинаково («Пароль» в каждом), и поиск по имени возвращал чужое
+   * значение. */
+  function fieldValue(id: string, index: number | null): string | null {
+    if (index === null) return null;
     const item = store.search("").find((i) => i.id === id);
-    return item?.fields.find((f) => f.name === name)?.value ?? null;
+    return item?.fields[index]?.value ?? null;
   }
 
   async function copyTotp(id: string) {
@@ -180,8 +180,8 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
         return;
       }
       const value = e.shiftKey
-        ? fieldValue(item.id, item.loginField)
-        : fieldValue(item.id, item.passwordField);
+        ? fieldValue(item.id, item.loginIndex)
+        : fieldValue(item.id, item.passwordIndex);
       if (value !== null) void copyValue(value, e.shiftKey ? "логин" : "пароль");
     }
   }
@@ -214,7 +214,7 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
             <li
               // Индекс в ключе обязателен: в записи бывают два секретных поля с
             // одинаковым именем, и без него ключи совпадали бы.
-            key={`${item.id}:${item.passwordField}:${index}`}
+            key={`${item.id}:${item.passwordIndex}`}
               className={`palette__row${picking && index === selected ? " palette__row--active" : ""}`}
               onMouseEnter={() => {
               setSelected(index);
@@ -226,14 +226,14 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
                 {item.detail && <span className="palette__row-detail">{item.detail}</span>}
               </span>
               <span className="palette__row-actions">
-                {item.loginField && (
+                {item.loginIndex !== null && (
                   <button
                     type="button"
                     className="palette__btn"
                     aria-label="Скопировать логин"
                     title="Скопировать логин"
                     onClick={() => {
-                      const v = fieldValue(item.id, item.loginField);
+                      const v = fieldValue(item.id, item.loginIndex);
                       if (v !== null) void copyValue(v, "логин");
                     }}
                   >
@@ -246,7 +246,7 @@ export function QuickPalette({ store, openSignal = 0, onOpenItem }: QuickPalette
                   aria-label="Скопировать пароль"
                   title="Скопировать пароль"
                   onClick={() => {
-                    const v = fieldValue(item.id, item.passwordField);
+                    const v = fieldValue(item.id, item.passwordIndex);
                     if (v !== null) void copyValue(v, "пароль");
                   }}
                 >

@@ -168,20 +168,36 @@ const SECRET_MASK = "••••••••";
  * тащить сюда тип формы означало бы связать карточку с редактором ради шести
  * строк.
  */
+export interface CardFieldEntry {
+  field: ItemField;
+  /**
+   * Позиция поля в записи.
+   *
+   * Ею опознаются поля везде, где раньше использовалось имя: показ секрета,
+   * подтверждение копирования, живые коды двухфакторки. Имя перестало быть
+   * уникальным, как только у записи появились аккаунты - в каждом из них поле
+   * зовётся «Пароль». Из-за этого один глаз открывал сразу оба пароля, а
+   * копирование брало чужой (найдено пользователем 17.08.2026).
+   */
+  index: number;
+}
+
 export function cardFieldGroups(
   fields: ItemField[],
-): Array<{ name: string | null; fields: ItemField[] }> {
-  const groups: Array<{ name: string | null; fields: ItemField[] }> = [{ name: null, fields: [] }];
-  for (const field of fields) {
+): Array<{ name: string | null; entries: CardFieldEntry[] }> {
+  const groups: Array<{ name: string | null; entries: CardFieldEntry[] }> = [
+    { name: null, entries: [] },
+  ];
+  fields.forEach((field, index) => {
     const name = field.group && field.group.trim() !== "" ? field.group : null;
     let group = groups.find((g) => g.name === name);
     if (!group) {
-      group = { name, fields: [] };
+      group = { name, entries: [] };
       groups.push(group);
     }
-    group.fields.push(field);
-  }
-  return groups.filter((g) => g.fields.length > 0);
+    group.entries.push({ field, index });
+  });
+  return groups.filter((g) => g.entries.length > 0);
 }
 
 const COPY_LABEL = "Копировать";
@@ -235,9 +251,13 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
   onDuplicate,
 }: RecordCardProps) {
   const [tab, setTab] = useState<Tab>("fields");
-  const [revealed, setRevealed] = useState<Set<string>>(() => new Set());
+  /** Позиции полей, значения которых сейчас показаны. Позиции, а не имена:
+   * у записи с аккаунтами поля называются одинаково. */
+  const [revealed, setRevealed] = useState<Set<number>>(() => new Set());
   const [revealedHistory, setRevealedHistory] = useState<Set<string>>(() => new Set());
-  const [copiedField, setCopiedField] = useState<string | null>(null);
+  /** Позиция поля, которое только что скопировали. Позиция, а не имя: имена
+   * в записи с аккаунтами повторяются. */
+  const [copiedField, setCopiedField] = useState<number | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
   /**
    * Какие вложения раскрыты. Свёрнуто по умолчанию и намеренно: содержимое
@@ -275,7 +295,7 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
    * `otpauth://` из значения поля. Вставить ссылку в форму входа на сайте
    * означает получить отказ и не понять почему.
    */
-  const [totpCodes, setTotpCodes] = useState<Record<string, string | null>>({});
+  const [totpCodes, setTotpCodes] = useState<Record<number, string | null>>({});
   const qrRef = useRef<HTMLDivElement>(null);
   useModalFocus(qrRef, qrView !== null);
 
@@ -419,11 +439,11 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
     setDeleteConfirmVisible(false);
   }
 
-  function toggleReveal(name: string) {
+  function toggleReveal(index: number) {
     setRevealed((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
       return next;
     });
   }
@@ -437,7 +457,7 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
     });
   }
 
-  async function handleCopy(field: ItemField) {
+  async function handleCopy(field: ItemField, index: number) {
     // Буфер обмена - граница ОС, запись может отклоняться (нет разрешения,
     // недоступен в текущем контексте и т.п.) - падать тихо в необработанный
     // reject недопустимо (CLAUDE.md §5 "Handle failures where they can
@@ -447,11 +467,11 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
       setCopyError(null);
       // 30 секунд - буквально из брифа (R48), не настраивается с этого места.
       // У поля двухфакторки копируется текущий код, а не ссылка otpauth://.
-      const totp = looksLikeTotp(field.value) ? totpCodes[field.name] : null;
+      const totp = looksLikeTotp(field.value) ? totpCodes[index] : null;
       await copyWithAutoClear(totp ?? field.value);
-      setCopiedField(field.name);
+      setCopiedField(index);
       window.setTimeout(() => {
-        setCopiedField((current) => (current === field.name ? null : current));
+        setCopiedField((current) => (current === index ? null : current));
       }, 2000);
     } catch (err) {
       console.error("RecordCard: не удалось скопировать значение в буфер обмена", err);
@@ -582,11 +602,11 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
               key={group.name ?? "__common"}
             >
               {group.name !== null && <h3 className="record-card__group-title">{group.name}</h3>}
-              {group.fields.map((field) => {
-            const isRevealed = !field.secret || revealed.has(field.name);
+              {group.entries.map(({ field, index }) => {
+            const isRevealed = !field.secret || revealed.has(index);
             const stale = field.secret && isSecretFieldStale(item, field.name);
             return (
-              <div className="record-card__field" key={field.name}>
+              <div className="record-card__field" key={index}>
                 <div className="record-card__field-label">
                   {stale && <StatusDot kind="oldPassword" className="record-card__field-dot" />}
                   <span>{field.name}</span>
@@ -597,7 +617,7 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                       value={field.value}
                       onCodeChange={(code) =>
                         setTotpCodes((prev) =>
-                          prev[field.name] === code ? prev : { ...prev, [field.name]: code },
+                          prev[index] === code ? prev : { ...prev, [index]: code },
                         )
                       }
                     />
@@ -616,7 +636,7 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                     <button
                       type="button"
                       className="record-card__field-btn record-card__field-btn--icon"
-                      onClick={() => toggleReveal(field.name)}
+                      onClick={() => toggleReveal(index)}
                       aria-pressed={isRevealed}
                       aria-label={isRevealed ? REVEAL_HIDE_LABEL : REVEAL_SHOW_LABEL}
                       title={isRevealed ? REVEAL_HIDE_LABEL : REVEAL_SHOW_LABEL}
@@ -640,13 +660,13 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
                     type="button"
                     className={
                       "record-card__field-btn record-card__field-btn--icon" +
-                      (copiedField === field.name ? " record-card__field-btn--copied" : "")
+                      (copiedField === index ? " record-card__field-btn--copied" : "")
                     }
-                    onClick={() => handleCopy(field)}
-                    aria-label={copiedField === field.name ? COPIED_LABEL : COPY_LABEL}
-                    title={copiedField === field.name ? COPIED_LABEL : COPY_LABEL}
+                    onClick={() => handleCopy(field, index)}
+                    aria-label={copiedField === index ? COPIED_LABEL : COPY_LABEL}
+                    title={copiedField === index ? COPIED_LABEL : COPY_LABEL}
                   >
-                    {copiedField === field.name ? <CheckIcon /> : <CopyIcon />}
+                    {copiedField === index ? <CheckIcon /> : <CopyIcon />}
                   </button>
                   {/* QR - рядом с копированием: это тот же жест «забрать
                       значение отсюда», только приёмник не буфер обмена, а

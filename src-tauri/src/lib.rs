@@ -17,6 +17,7 @@ pub fn run() {
             vault_fs::list_backups,
             vault_fs::rotate_backups,
             vault_fs::exe_dir,
+            vault_fs::quick_mode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

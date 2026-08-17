@@ -1,0 +1,215 @@
+/*
+ * Окно быстрого доступа - см. QuickAccess.tsx.
+ *
+ * Безрамочное, поэтому фон и скругление рисует сама страница: без них окно
+ * выглядело бы прямоугольной дырой в экране.
+ */
+
+.quick {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  height: 100vh;
+  padding: var(--sp-4);
+  box-sizing: border-box;
+  background: var(--surface);
+  border: var(--border-w) solid var(--border-strong);
+  border-radius: var(--r-card);
+  color: var(--text);
+  font-family: var(--font-ui);
+  overflow: hidden;
+}
+
+/* Перетаскивание за любое свободное место сверху: заголовка у окна нет, и
+   без этого его нельзя было бы сдвинуть вовсе. */
+.quick__drag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 40px;
+  height: 28px;
+}
+
+.quick__close {
+  position: absolute;
+  top: var(--sp-1);
+  right: var(--sp-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-chip);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.quick__close:hover {
+  background: var(--danger);
+  color: var(--bg);
+}
+
+.quick__message {
+  margin: auto;
+  max-width: 46ch;
+  color: var(--text-dim);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  text-align: center;
+}
+
+.quick__message--error {
+  color: var(--danger);
+}
+
+/* --- Ввод PIN --- */
+
+.quick__pin {
+  position: relative;
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  justify-content: center;
+  margin: auto;
+  cursor: text;
+}
+
+/* Настоящее поле невидимо, но существует: вставка, backspace и экранные
+   читалки работают средствами браузера, а не переписываются руками. */
+.quick__pin-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  border: none;
+  background: none;
+  cursor: text;
+}
+
+.quick__pin-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--fill-subtle);
+  border: var(--border-w) solid var(--border-strong);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.quick__pin-cell--filled {
+  background: var(--text-strong);
+  border-color: var(--text-strong);
+}
+
+.quick__pin-cell--next {
+  border-color: var(--border-active);
+}
+
+.quick__pin--error .quick__pin-cell {
+  border-color: var(--danger);
+}
+
+/* --- Поиск и результаты --- */
+
+.quick__search {
+  flex: none;
+  margin-top: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-lg);
+}
+
+.quick__search:focus-visible {
+  outline: none;
+  border-color: var(--border-active);
+}
+
+.quick__results {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.quick__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+}
+
+.quick__row--active {
+  background: var(--surface-hover);
+}
+
+.quick__row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+}
+
+.quick__row-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  /* Кнопки видно только на выбранной строке: в списке из семи строк по три
+     кнопки в каждой глаз не находит ничего. */
+  opacity: 0;
+}
+
+.quick__row--active .quick__row-actions {
+  opacity: 1;
+}
+
+.quick__row-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 var(--sp-2);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-chip);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.quick__row-btn:hover {
+  background: var(--surface-selected);
+  color: var(--text-strong);
+}
+
+.quick__row-btn--icon {
+  padding: 0;
+}
+
+.quick__empty {
+  padding: var(--sp-3);
+  color: var(--text-faint);
+  font-size: var(--fs-md);
+}
+
+.quick__hint {
+  flex: none;
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-sm);
+  text-align: center;
+}

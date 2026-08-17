@@ -16,6 +16,10 @@
     "core:window:allow-close",
     "core:window:allow-is-maximized",
     "core:window:allow-set-always-on-top",
-    "opener:allow-open-url"
+    "opener:allow-open-url",
+    "core:window:allow-set-size",
+    "core:window:allow-center",
+    "core:window:allow-set-resizable",
+    "core:window:allow-hide"
   ]
 }

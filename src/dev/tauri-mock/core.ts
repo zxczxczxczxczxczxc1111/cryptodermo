@@ -35,6 +35,10 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
       return (await mockRotateBackups()) as T;
     case "exe_dir":
       return mockExeDir() as T;
+    // Режим быстрого доступа в браузере включается адресом `?quick`: аргументов
+    // командной строки у вкладки нет, а посмотреть на окошко глазами надо.
+    case "quick_mode":
+      return (new URLSearchParams(window.location.search).has("quick")) as T;
     default:
       throw new Error(
         `mock: команда "${cmd}" не реализована в заглушке. Добавь её в src/dev/tauri-mock/core.ts`,

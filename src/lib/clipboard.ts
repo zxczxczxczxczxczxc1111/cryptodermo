@@ -8,7 +8,11 @@
  * модуль - только в буфер обмена ОС, на ограниченное время.
  */
 
-const DEFAULT_CLEAR_MS = 30000;
+/** Через сколько буфер обмена очищается сам. Экспортируется: окно быстрого
+ * доступа обязано дожить до этого момента, иначе очистка не сработает - см.
+ * `QuickAccess.tsx`. */
+export const CLIPBOARD_CLEAR_MS = 30000;
+const DEFAULT_CLEAR_MS = CLIPBOARD_CLEAR_MS;
 
 let clearTimer: ReturnType<typeof setTimeout> | null = null;
 // true, пока в буфере обмена лежит значение, записанное этим модулем и ещё

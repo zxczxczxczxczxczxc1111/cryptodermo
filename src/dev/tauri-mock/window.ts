@@ -43,6 +43,22 @@ class MockWindow {
     console.info(`mock: window.setAlwaysOnTop(${value}) - в браузере не применимо`);
   }
 
+  async setResizable(value: boolean): Promise<void> {
+    console.info(`mock: window.setResizable(${value})`);
+  }
+
+  async setSize(size: unknown): Promise<void> {
+    console.info("mock: window.setSize()", size);
+  }
+
+  async center(): Promise<void> {
+    console.info("mock: window.center()");
+  }
+
+  async hide(): Promise<void> {
+    console.info("mock: window.hide() - в браузере окно не прячется");
+  }
+
   async close(): Promise<void> {
     console.info("mock: window.close() - в браузере окно не закрывается");
   }
@@ -60,6 +76,11 @@ class MockWindow {
     window.addEventListener("resize", onResize, { passive: true });
     return () => window.removeEventListener("resize", onResize);
   }
+}
+
+/** `LogicalSize` из настоящего API - заглушке достаточно формы объекта. */
+export class LogicalSize {
+  constructor(public width: number, public height: number) {}
 }
 
 const instance = new MockWindow();

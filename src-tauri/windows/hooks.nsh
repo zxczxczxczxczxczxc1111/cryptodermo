@@ -22,9 +22,26 @@
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
+  ; Второй ярлык - режим быстрого доступа (флаг --quick). Именно на него
+  ; человек вешает сочетание клавиш: правой кнопкой по ярлыку, «Свойства»,
+  ; поле «Быстрый вызов». Windows умеет это сама, поэтому приложению не нужен
+  ; ни плагин глобальных горячих клавиш, ни постоянное присутствие в памяти.
+  ;
+  ; Ярлык кладётся рядом с основным, тем же способом, что и он сам (см.
+  ; CreateStartMenuShortcut в шаблоне Tauri): в подпапку меню «Пуск», если она
+  ; используется, иначе прямо в меню.
+  !if "${STARTMENUFOLDER}" != ""
+    CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME} (быстрый доступ).lnk"       "$INSTDIR\${MAINBINARYNAME}.exe" "--quick"
+  !else
+    CreateShortcut "$SMPROGRAMS\${PRODUCTNAME} (быстрый доступ).lnk"       "$INSTDIR\${MAINBINARYNAME}.exe" "--quick"
+  !endif
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
+  ; Ярлык быстрого доступа создан нами, значит и убирать его нам: шаблон о нём
+  ; не знает и оставил бы висеть в меню «Пуск» после удаления программы.
+  Delete "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME} (быстрый доступ).lnk"
+  Delete "$SMPROGRAMS\${PRODUCTNAME} (быстрый доступ).lnk"
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL

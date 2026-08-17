@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import type { Item, ItemField, ItemType } from "../lib/vaultStore";
+import { save } from "@tauri-apps/plugin-dialog";
+import type { Attachment, Item, ItemField, ItemType, VaultStore } from "../lib/vaultStore";
+import { writeVaultAtomic } from "../lib/tauriApi";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { StatusDot } from "./StatusDot";
 import "./RecordCard.css";
@@ -24,6 +26,34 @@ export const TYPE_LABELS: Record<ItemType, string> = {
 };
 
 const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+
+/** base64 (стандартный алфавит) -> байты. Та же логика, что в
+ * `vaultStore.ts`/`vaultFormat.ts`/`Settings.tsx`/`Editor.tsx` - приватные
+ * хелперы других модулей не экспортированы (решение тикета 02), у каждого
+ * файла своя маленькая копия. */
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/** Человекочитаемый размер файла - тот же формат, что в `Editor.tsx`
+ * (`formatFileSize`), своя маленькая копия по тому же принципу, что и
+ * `base64ToBytes` выше. */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  const units = ["КБ", "МБ", "ГБ"];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
 
 /**
  * ISO8601-дата, с которой отсчитывается возраст значения поля `fieldName`
@@ -63,6 +93,31 @@ export interface RecordCardProps {
   /** Открыть эту запись в редакторе - сам редактор строит тикет 08, здесь
    * только запрос перехода по `id`. */
   onEdit: (id: string) => void;
+  /**
+   * Хранилище и путь к базе - нужны только для кнопки "Удалить" у вложения
+   * (R44.2, §18: "вижу вложения в карточке с именем, размером и кнопками
+   * «Скачать»/«Удалить»"). Карточка остаётся в основном view-only (R97):
+   * "Скачать" не нуждается ни в чём из этого (просто декодирует
+   * `attachment.data` и пишет файл через системный диалог, см.
+   * `handleDownloadAttachment`), но "Удалить" - реальная правка записи,
+   * которую нужно закоммитить в `store` и сохранить на диск, а не только
+   * спрятать в локальном состоянии карточки (иначе повторное открытие
+   * записи вернуло бы "удалённое" вложение обратно).
+   *
+   * Оба пропа опциональны и предполагаются парой: если хотя бы один не
+   * передан, кнопка "Удалить" у вложений не рендерится вовсе - карточка
+   * ведёт себя как раньше (полностью view-only для вложений), поэтому
+   * существующий вызывающий код (`List.tsx`, тикет 07, вне зоны этого
+   * тикета) остаётся рабочим без изменений, пока тикет 12 ("сведение
+   * экранов") не передаст их по-настоящему.
+   */
+  store?: VaultStore;
+  vaultPath?: string;
+  /** Вложение удалено и сохранено на диск - `updated` (копия записи из
+   * `store.updateItem`) передаётся вызывающему коду, чтобы он обновил
+   * `item`, который передаёт этой карточке (сама карточка не хранит
+   * отдельную копию `item.attachments` - см. `store`/`vaultPath` выше). */
+  onAttachmentsChanged?: (updated: Item) => void;
 }
 
 type Tab = "fields" | "history";
@@ -79,14 +134,16 @@ function formatDate(iso: string): string {
   });
 }
 
-export function RecordCard({ item, onEdit }: RecordCardProps) {
+export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChanged }: RecordCardProps) {
   const [tab, setTab] = useState<Tab>("fields");
   const [revealed, setRevealed] = useState<Set<string>>(() => new Set());
   const [revealedHistory, setRevealedHistory] = useState<Set<string>>(() => new Set());
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
   const hasHistory = (item.history?.length ?? 0) > 0;
+  const canDeleteAttachments = Boolean(store && vaultPath);
 
   // Переключение на другую запись сбрасывает раскрытые поля и вкладку -
   // "Показать" одной записи не должно утекать в следующую только потому,
@@ -98,7 +155,52 @@ export function RecordCard({ item, onEdit }: RecordCardProps) {
     setRevealedHistory(new Set());
     setCopiedField(null);
     setCopyError(null);
+    setAttachmentError(null);
   }, [item.id]);
+
+  /** Кнопка "Скачать" у вложения (R44.2) - диалог `save()` с именем файла
+   * по умолчанию, декодирование base64 обратно в байты, запись через
+   * `writeVaultAtomic`. Самодостаточно - не трогает `store`. */
+  async function handleDownloadAttachment(attachment: Attachment) {
+    setAttachmentError(null);
+    let targetPath: string | null;
+    try {
+      targetPath = await save({ title: "Скачать вложение", defaultPath: attachment.name });
+    } catch (err) {
+      console.error("RecordCard: не удалось открыть системный диалог сохранения", err);
+      setAttachmentError("Не удалось открыть системный диалог. Попробуйте ещё раз.");
+      return;
+    }
+    if (targetPath === null) return; // пользователь отменил диалог - не ошибка
+
+    try {
+      await writeVaultAtomic(targetPath, base64ToBytes(attachment.data));
+    } catch (err) {
+      console.error("RecordCard: не удалось сохранить вложение на диск", err);
+      setAttachmentError("Не удалось сохранить файл. Проверьте, что выбранное место доступно для записи.");
+    }
+  }
+
+  /** Кнопка "Удалить" у вложения (R44.2) - реальная правка записи
+   * (`store.updateItem` + `store.save`), не локальное скрытие: без этого
+   * повторное открытие записи вернуло бы "удалённое" вложение обратно.
+   * Рендерится только когда `store`/`vaultPath` оба переданы (см.
+   * `canDeleteAttachments` выше и комментарий у `RecordCardProps`). R45 на
+   * вложения не распространяется - без подтверждения и без `history`, как
+   * удаление тега. */
+  async function handleDeleteAttachment(attachmentId: string) {
+    if (!store || !vaultPath) return; // defensive - кнопка не должна была отрендериться без обоих пропов
+    setAttachmentError(null);
+    try {
+      const next = item.attachments.filter((a) => a.id !== attachmentId);
+      const updated = store.updateItem(item.id, { attachments: next });
+      await store.save(vaultPath);
+      onAttachmentsChanged?.(updated);
+    } catch (err) {
+      console.error("RecordCard: не удалось удалить вложение", err);
+      setAttachmentError("Не удалось удалить вложение. Попробуйте снова.");
+    }
+  }
 
   function toggleReveal(name: string) {
     setRevealed((prev) => {
@@ -238,6 +340,47 @@ export function RecordCard({ item, onEdit }: RecordCardProps) {
             <div className="record-card__note">
               <span className="record-card__field-label-text">Заметка</span>
               <p>{item.note}</p>
+            </div>
+          )}
+
+          {item.attachments.length > 0 && (
+            <div className="record-card__attachments">
+              <span className="record-card__field-label-text">Вложения</span>
+
+              {attachmentError && (
+                <p className="record-card__copy-error" role="alert">
+                  {attachmentError}
+                </p>
+              )}
+
+              <ul className="record-card__attachments-list">
+                {item.attachments.map((att) => (
+                  <li className="record-card__attachment-row" key={att.id}>
+                    <span className="record-card__attachment-name">{att.name}</span>
+                    <span className="record-card__attachment-size">{formatFileSize(att.size)}</span>
+                    <button
+                      type="button"
+                      className="record-card__field-btn"
+                      onClick={() => {
+                        void handleDownloadAttachment(att);
+                      }}
+                    >
+                      Скачать
+                    </button>
+                    {canDeleteAttachments && (
+                      <button
+                        type="button"
+                        className="record-card__field-btn"
+                        onClick={() => {
+                          void handleDeleteAttachment(att.id);
+                        }}
+                      >
+                        Удалить
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>

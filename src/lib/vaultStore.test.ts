@@ -5,6 +5,8 @@ import {
   VaultNotLoadedError,
   ItemCountDecreasedError,
   MAX_BACKUPS,
+  MAX_ATTACHMENT_SIZE_BYTES,
+  MAX_VAULT_SIZE_BYTES,
   type Item,
 } from "./vaultStore";
 
@@ -309,6 +311,21 @@ describe("VaultStore: search", () => {
     expect(store.search("hunter2")).toHaveLength(0);
   });
 
+  it("finds an item by a substring of an attachment's file name (R44, §18 - search extends to attachments[].name)", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("pw", 1000);
+    store.addItem({
+      type: "other",
+      title: "Tax documents",
+      tags: [],
+      fields: [],
+      attachments: [{ id: "a1", name: "2025-tax-return.pdf", mimeType: "application/pdf", size: 1234, data: "" }],
+    });
+    store.addItem({ type: "note", title: "Unrelated", tags: [], fields: [] });
+
+    expect(store.search("tax-return").map((i) => i.title)).toEqual(["Tax documents"]);
+  });
+
   it("returns every item, sorted by updatedAt descending, for an empty/blank query", async () => {
     // updatedAt имеет миллисекундную точность - два addItem() подряд в одном
     // синхронном блоке кода вполне могут получить одинаковую метку времени,
@@ -329,6 +346,75 @@ describe("VaultStore: search", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("VaultStore: attachments (R44)", () => {
+  it("addItem stores attachments and updateItem can replace/remove them", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("pw", 1000);
+    const created = store.addItem({
+      type: "other",
+      title: "Doc",
+      tags: [],
+      fields: [],
+      attachments: [{ id: "a1", name: "file.txt", mimeType: "text/plain", size: 3, data: "YWJj" }],
+    });
+    expect(created.attachments).toHaveLength(1);
+
+    const updated = store.updateItem(created.id, { attachments: [] });
+    expect(updated.attachments).toHaveLength(0);
+    expect(store.search("")[0].attachments).toHaveLength(0);
+  });
+
+  it("updateItem without an attachments key leaves existing attachments untouched (R45: attachments survive unrelated edits, no history)", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("pw", 1000);
+    const created = store.addItem({
+      type: "other",
+      title: "Doc",
+      tags: [],
+      fields: [],
+      attachments: [{ id: "a1", name: "file.txt", mimeType: "text/plain", size: 3, data: "YWJj" }],
+    });
+
+    const updated = store.updateItem(created.id, { title: "Renamed" });
+    expect(updated.attachments).toHaveLength(1);
+    expect(updated.title).toBe("Renamed");
+    expect(updated.history).toBeUndefined();
+  });
+});
+
+describe("VaultStore: estimateSizeBytes / soft size limits (R44.3, §18)", () => {
+  it("exposes the soft size limits from spec.md §18 (~25 MB per attachment, ~300 MB per vault)", () => {
+    // Пороги - дословно из §18 спецификации, не производные от кода под
+    // тестом.
+    expect(MAX_ATTACHMENT_SIZE_BYTES).toBe(25 * 1024 * 1024);
+    expect(MAX_VAULT_SIZE_BYTES).toBe(300 * 1024 * 1024);
+  });
+
+  it("throws VaultNotLoadedError when called before load/create", () => {
+    const store = new VaultStore();
+    expect(() => store.estimateSizeBytes()).toThrow(VaultNotLoadedError);
+  });
+
+  it("grows when an attachment is added and shrinks back after it is removed", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("pw", 1000);
+    const baseline = store.estimateSizeBytes();
+
+    const created = store.addItem({ type: "other", title: "x", tags: [], fields: [] });
+    store.updateItem(created.id, {
+      attachments: [
+        { id: "a1", name: "big.bin", mimeType: "application/octet-stream", size: 1000, data: "A".repeat(1400) },
+      ],
+    });
+    const withAttachment = store.estimateSizeBytes();
+    expect(withAttachment).toBeGreaterThan(baseline);
+
+    store.updateItem(created.id, { attachments: [] });
+    const afterRemoval = store.estimateSizeBytes();
+    expect(afterRemoval).toBeLessThan(withAttachment);
   });
 });
 

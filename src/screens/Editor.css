@@ -185,7 +185,8 @@
 
 .editor__tag-input-row button,
 .editor__add-field-btn,
-.editor__generator-anchor > button {
+.editor__generator-anchor > button,
+.editor__attach-btn {
   align-self: flex-start;
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-field);
@@ -200,8 +201,76 @@
 
 .editor__tag-input-row button:hover,
 .editor__add-field-btn:hover,
-.editor__generator-anchor > button:hover {
+.editor__generator-anchor > button:hover,
+.editor__attach-btn:hover {
   background: var(--surface);
+}
+
+.editor__attach-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.editor__attachments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.editor__attachments-empty {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-ui);
+}
+
+.editor__attachment-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  background: var(--surface-raised);
+}
+
+.editor__attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-ui);
+  color: var(--text);
+}
+
+.editor__attachment-size {
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  white-space: nowrap;
+}
+
+.editor__attachment-row button {
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-chip);
+  border: var(--border-w) solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.editor__attachment-row button:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.editor__attachment-warning {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--fs-ui);
 }
 
 .editor__fields {

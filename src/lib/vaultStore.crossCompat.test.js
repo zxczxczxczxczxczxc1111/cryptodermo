@@ -16,7 +16,7 @@
 // реально запускается и проверяет то, что должен, не трогая tsc вообще.
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { VaultStore } from "./vaultStore";
@@ -97,6 +97,73 @@ describe("emergency-decrypt.py <-> app cross-compatibility", () => {
         // которым их записал toBytes(), и json.dumps в скрипте не
         // пересортировывает ключи объекта (sort_keys не задан).
         expect(JSON.stringify(decryptedItems)).toBe(JSON.stringify(expectedItems));
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // R44/§18, критерий приёмки тикета 11: "emergency-decrypt.py с флагом
+  // распаковки вложений создаёт файлы вложений рядом с JSON, содержимое
+  // совпадает с оригиналом". Отдельная от теста выше проверка - тот
+  // проверяет обычный вывод JSON, этот - флаг --unpack-attachments и
+  // именно байт-в-байт сравнение содержимого вложения (не JSON-строки
+  // base64, а РЕАЛЬНЫЕ декодированные байты на диске), через реальный
+  // формат, который пишет приложение (VaultStore.toBytes()), а не
+  // сконструированный вручную JSON.
+  it.skipIf(!hasPython)(
+    "R44/§18: emergency-decrypt.py --unpack-attachments decodes attachments[].data into a file byte-for-byte identical to the original",
+    async () => {
+      const store = new VaultStore();
+      const password = "attachment cross-compat password";
+      await store.createNewVault(password, 1000);
+
+      // Бинарные, не текстовые байты (все значения 0..255 несколько раз) -
+      // сильнее проверка, чем случайный текстовый файл: ловит и проблемы
+      // кодировки текста, и проблемы двоичного base64.
+      const originalBytes = new Uint8Array(300);
+      for (let i = 0; i < originalBytes.length; i++) originalBytes[i] = i % 256;
+      let binary = "";
+      for (let i = 0; i < originalBytes.length; i++) binary += String.fromCharCode(originalBytes[i]);
+      const dataBase64 = btoa(binary);
+
+      const item = store.addItem({
+        type: "other",
+        title: "cross-compat fixture: attachment",
+        tags: [],
+        fields: [],
+        attachments: [
+          {
+            id: "att-1",
+            name: "fixture.bin",
+            mimeType: "application/octet-stream",
+            size: originalBytes.length,
+            data: dataBase64,
+          },
+        ],
+      });
+
+      const bytes = await store.toBytes();
+      const dir = mkdtempSync(join(tmpdir(), "vault-cross-compat-attachments-"));
+      const vaultPath = join(dir, "vault.dat");
+      writeFileSync(vaultPath, bytes);
+      const outDir = join(dir, "unpacked");
+
+      try {
+        const result = spawnSync(
+          "python",
+          ["emergency-decrypt.py", vaultPath, "--unpack-attachments", outDir],
+          { cwd: process.cwd(), env: { ...process.env, VAULT_PASSWORD: password }, encoding: "utf-8" },
+        );
+
+        expect(result.status, `script stderr: ${result.stderr}`).toBe(0);
+
+        const written = readdirSync(outDir);
+        expect(written).toHaveLength(1);
+        expect(written[0]).toBe(`${item.id}-fixture.bin`);
+
+        const unpackedBytes = new Uint8Array(readFileSync(join(outDir, written[0])));
+        expect(unpackedBytes).toEqual(originalBytes);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

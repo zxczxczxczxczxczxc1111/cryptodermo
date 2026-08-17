@@ -14,6 +14,12 @@ import {
   itemToFormState,
   emptyFormState,
   formStateToPatch,
+  formatFileSize,
+  attachmentFromFileBytes,
+  decodeAttachmentBytes,
+  addAttachment,
+  removeAttachment,
+  buildAttachmentSizeWarning,
 } from "./Editor";
 
 // Швы из spec.md §9/§14 и тикета 08 (R28, R84, R98.1, R19). В проекте нет
@@ -187,5 +193,130 @@ describe("Добавление/удаление поля и тега реаль�
     store.updateItem(created.id, formStateToPatch(withoutField));
     const [afterRemoval] = store.search("");
     expect(afterRemoval.fields).toEqual([]);
+  });
+});
+
+// R44/§18: вложения файлов (тикет 11). Тот же приём, что и выше - нет
+// jsdom, поэтому проверяются публичные чистые функции, а не рендер/клики.
+
+describe("R44: форма вложений", () => {
+  it("emptyFormState начинает без вложений для любого типа", () => {
+    for (const type of ITEM_TYPES) {
+      expect(emptyFormState(type).attachments).toEqual([]);
+    }
+  });
+
+  it("formStateToPatch включает attachments формы как есть (тикет 08 намеренно не выставлял этот ключ - тикет 11 достраивает)", () => {
+    const attachment = { id: "a1", name: "x.txt", mimeType: "text/plain", size: 1, data: "YQ==" };
+    const form = { ...emptyFormState("other"), attachments: [attachment] };
+    expect(formStateToPatch(form).attachments).toEqual([attachment]);
+  });
+
+  it("itemToFormState переносит существующие вложения записи в форму", () => {
+    const attachment = { id: "a1", name: "x.txt", mimeType: "text/plain", size: 1, data: "YQ==" };
+    const item = {
+      id: "1",
+      type: "other" as const,
+      title: "t",
+      tags: [],
+      fields: [],
+      note: "",
+      attachments: [attachment],
+      createdAt: "2020-01-01T00:00:00.000Z",
+      updatedAt: "2020-01-01T00:00:00.000Z",
+    };
+    expect(itemToFormState(item).attachments).toEqual([attachment]);
+  });
+});
+
+describe("addAttachment / removeAttachment", () => {
+  it("addAttachment добавляет вложение в конец списка, removeAttachment удаляет по id", () => {
+    const a1 = { id: "a1", name: "one.txt", mimeType: "text/plain", size: 1, data: "YQ==" };
+    const a2 = { id: "a2", name: "two.txt", mimeType: "text/plain", size: 1, data: "Yg==" };
+
+    let list = addAttachment([], a1);
+    expect(list).toEqual([a1]);
+    list = addAttachment(list, a2);
+    expect(list).toEqual([a1, a2]);
+
+    list = removeAttachment(list, "a1");
+    expect(list).toEqual([a2]);
+  });
+});
+
+describe("R44.2: скачанный файл побайтово совпадает с прикреплённым", () => {
+  it("attachmentFromFileBytes -> decodeAttachmentBytes не теряет и не меняет ни одного байта, включая все значения 0..255", () => {
+    const original = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) original[i] = i;
+
+    const attachment = attachmentFromFileBytes(original, "C:\\Users\\me\\Downloads\\photo.png");
+    const decoded = decodeAttachmentBytes(attachment);
+
+    expect(decoded).toEqual(original);
+    expect(attachment.size).toBe(256);
+  });
+
+  it("имя вложения - только последний сегмент пути (basename), для обоих разделителей ОС (закрывает часть находки ревью тикета 05 - interfaces.md, 'Из таска 05')", () => {
+    expect(attachmentFromFileBytes(new Uint8Array([1]), "C:\\Users\\me\\report.pdf").name).toBe("report.pdf");
+    expect(attachmentFromFileBytes(new Uint8Array([1]), "/home/me/report.pdf").name).toBe("report.pdf");
+  });
+
+  it("mimeType угадывается по расширению файла, неизвестное расширение получает универсальный тип, не пустую строку", () => {
+    expect(attachmentFromFileBytes(new Uint8Array([1]), "a.pdf").mimeType).toBe("application/pdf");
+    expect(attachmentFromFileBytes(new Uint8Array([1]), "a.png").mimeType).toBe("image/png");
+    expect(attachmentFromFileBytes(new Uint8Array([1]), "a.unknownext").mimeType).toBe("application/octet-stream");
+  });
+});
+
+describe("formatFileSize", () => {
+  it("форматирует байты/КБ/МБ человекочитаемо", () => {
+    expect(formatFileSize(500)).toBe("500 Б");
+    expect(formatFileSize(2048)).toBe("2.0 КБ");
+    expect(formatFileSize(5 * 1024 * 1024)).toBe("5.0 МБ");
+  });
+});
+
+describe("buildAttachmentSizeWarning: R44.3 - предупреждение, не отказ", () => {
+  // Пороги - дословно из spec.md §18 ("~25 МБ на файл, ~300 МБ на базу"),
+  // литералами здесь, а не импортом константы из кода под тестом.
+  const MB = 1024 * 1024;
+
+  it("не показывает предупреждение, пока ни один порог не превышен", () => {
+    expect(buildAttachmentSizeWarning(1 * MB, 10 * MB)).toBeNull();
+  });
+
+  it("предупреждает, когда сам файл крупнее ~25 МБ", () => {
+    expect(buildAttachmentSizeWarning(26 * MB, 26 * MB)).not.toBeNull();
+  });
+
+  it("предупреждает, когда суммарный размер базы после добавления превышает ~300 МБ, даже если сам файл небольшой", () => {
+    expect(buildAttachmentSizeWarning(1 * MB, 301 * MB)).not.toBeNull();
+  });
+
+  it("не отказывает и не бросает исключение ни при каком размере - только текст или null (приоритет 1 выше приоритета 4)", () => {
+    expect(() => buildAttachmentSizeWarning(10 * 1024 * MB, 10 * 1024 * MB)).not.toThrow();
+  });
+});
+
+describe("Вложения реально сохраняются и удаляются в VaultStore (R44)", () => {
+  it("attachments из форм-патча попадают в запись стора и удаляются оттуда", async () => {
+    const store = new VaultStore();
+    await store.createNewVault("pw", 1000);
+    const created = store.addItem({ type: "other", title: "Doc", tags: [], fields: [] });
+
+    const form = itemToFormState(created);
+    const attachment = attachmentFromFileBytes(new Uint8Array([1, 2, 3]), "report.pdf");
+    const withAttachment = { ...form, attachments: addAttachment(form.attachments, attachment) };
+    store.updateItem(created.id, formStateToPatch(withAttachment));
+
+    expect(store.search("")[0].attachments).toEqual([attachment]);
+
+    const withoutAttachment = {
+      ...withAttachment,
+      attachments: removeAttachment(withAttachment.attachments, attachment.id),
+    };
+    store.updateItem(created.id, formStateToPatch(withoutAttachment));
+
+    expect(store.search("")[0].attachments).toEqual([]);
   });
 });

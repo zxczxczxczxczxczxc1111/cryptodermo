@@ -1,11 +1,16 @@
 import { forwardRef, useId, useImperativeHandle, useRef, useState } from "react";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   ItemCountDecreasedError,
+  MAX_ATTACHMENT_SIZE_BYTES,
+  MAX_VAULT_SIZE_BYTES,
+  type Attachment,
   type Item,
   type ItemField,
   type ItemType,
   type VaultStore,
 } from "../lib/vaultStore";
+import { readVault, writeVaultAtomic } from "../lib/tauriApi";
 import { PasswordGenerator } from "../components/PasswordGenerator";
 import "./Editor.css";
 
@@ -85,6 +90,7 @@ type EditorFormState = {
   tags: string[];
   fields: FieldRow[];
   note: string;
+  attachments: Attachment[];
 };
 
 /** Что положить в поле, которое было в фокусе на момент открытия генератора
@@ -94,6 +100,156 @@ type FocusTarget = { kind: "title" } | { kind: "note" } | { kind: "field"; key: 
 
 function makeFieldKey(): string {
   return crypto.randomUUID();
+}
+
+/** base64 (стандартный алфавит) -> байты, без Node-специфичного Buffer.
+ * Та же логика, что в `vaultStore.ts`/`vaultFormat.ts`/`Settings.tsx` -
+ * приватные хелперы других модулей не экспортированы (решение тикета 02),
+ * у каждого файла своя маленькая копия. */
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/** Обратное преобразование: байты -> base64 (стандартный алфавит). */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+/** Имя файла из полного ОС-пути, который отдаёт диалог выбора файла
+ * (`@tauri-apps/plugin-dialog`, `open()`) - понимает и `/`, и `\` (тот же
+ * приём, что `dirOf()` в `vaultStore.ts`: диалог может вернуть путь с
+ * любым разделителем в зависимости от ОС).
+ *
+ * Заодно закрывает часть находки ревью тикета 05 (interfaces.md, "Из
+ * таска 05" - path traversal в `emergency-decrypt.py --unpack-attachments`
+ * через `attachments[].name`, если это имя когда-нибудь будет содержать
+ * `../`): имя, которое реально попадает в `attachments[].name` при
+ * прикреплении файла ЭТИМ экраном, всегда только последний сегмент пути к
+ * реальному файлу на диске пользователя - физически не может содержать
+ * `..`/`/`/`\`, потому что ни одна ОС не позволяет создать файл с такими
+ * символами в собственном имени. Основная защита на стороне чтения - в
+ * самом `emergency-decrypt.py` (`_sanitize_path_component`) - эта функция
+ * лишь не создаёт опасное значение на входе, а не полагается на то, что до
+ * него никогда не дойдёт. */
+function basenameOf(path: string): string {
+  const idx = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return idx === -1 ? path : path.slice(idx + 1);
+}
+
+/** Расширение файла без точки, в нижнем регистре - только для
+ * `guessMimeType` ниже. Пустая строка, если расширения нет. */
+function extensionOf(filename: string): string {
+  const idx = filename.lastIndexOf(".");
+  return idx === -1 || idx === filename.length - 1 ? "" : filename.slice(idx + 1).toLowerCase();
+}
+
+/** Небольшой словарь самых частых расширений -> MIME-тип. Диалог выбора
+ * файла (`@tauri-apps/plugin-dialog`, `open()`) отдаёт только путь к
+ * файлу, не готовый объект `File` со своим `.type`, как браузерный
+ * `<input type="file">` - MIME приходится угадывать по расширению, как
+ * это делает любой файловый менеджер. Список не претендует на полноту -
+ * неизвестное расширение получает стандартный универсальный тип
+ * `application/octet-stream`, не пустую строку и не выдумку. */
+const MIME_TYPES_BY_EXTENSION: Record<string, string> = {
+  txt: "text/plain",
+  md: "text/markdown",
+  csv: "text/csv",
+  json: "application/json",
+  pdf: "application/pdf",
+  zip: "application/zip",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
+function guessMimeType(filename: string): string {
+  return MIME_TYPES_BY_EXTENSION[extensionOf(filename)] ?? "application/octet-stream";
+}
+
+/** Человекочитаемый размер файла - список вложений и текст предупреждения
+ * о размере (`buildAttachmentSizeWarning` ниже) используют один и тот же
+ * формат. */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  const units = ["КБ", "МБ", "ГБ"];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+/** Прочитанные байты выбранного файла -> `Attachment` (R44, §18): имя -
+ * только basename пути (см. `basenameOf` выше), `id` - новый UUID (у
+ * вложения свой `id`, независимый от `id` самой записи и от `key` строк
+ * формы), `mimeType` угадан по расширению, `data` - содержимое файла в
+ * base64. Чистая функция, вынесена ради теста "скачанный файл побайтово
+ * совпадает с прикреплённым" (критерий приёмки тикета 11) - кодирование
+ * здесь и декодирование в `decodeAttachmentBytes` ниже обязаны быть парой
+ * без потерь. */
+export function attachmentFromFileBytes(bytes: Uint8Array, filePath: string): Attachment {
+  const name = basenameOf(filePath);
+  return {
+    id: crypto.randomUUID(),
+    name,
+    mimeType: guessMimeType(name),
+    size: bytes.length,
+    data: bytesToBase64(bytes),
+  };
+}
+
+/** Обратное к `attachmentFromFileBytes` - `Attachment.data` (base64) ->
+ * исходные байты файла, для кнопки "Скачать". */
+export function decodeAttachmentBytes(attachment: Attachment): Uint8Array {
+  return base64ToBytes(attachment.data);
+}
+
+export function addAttachment(list: Attachment[], attachment: Attachment): Attachment[] {
+  return [...list, attachment];
+}
+
+export function removeAttachment(list: Attachment[], attachmentId: string): Attachment[] {
+  return list.filter((a) => a.id !== attachmentId);
+}
+
+/**
+ * Мягкое предупреждение о размере (R44.3, §18 спецификации, дословно:
+ * "предупреждение в интерфейсе («Файл большой, база станет весить N МБ -
+ * сохранение будет медленнее»), без отказа") - НЕ блокирует ничего, только
+ * текст для интерфейса. `vaultSizeAfterBytes` - оценка размера тела базы
+ * ПОСЛЕ добавления этого файла (`VaultStore.estimateSizeBytes()` до
+ * добавления + размер нового файла - см. вызов в `handleAttachFile` ниже).
+ * Возвращает `null`, если оба порога не превышены - тогда интерфейс ничего
+ * не показывает.
+ */
+export function buildAttachmentSizeWarning(fileSizeBytes: number, vaultSizeAfterBytes: number): string | null {
+  const messages: string[] = [];
+  if (fileSizeBytes > MAX_ATTACHMENT_SIZE_BYTES) {
+    messages.push(`Файл большой (${formatFileSize(fileSizeBytes)}).`);
+  }
+  if (vaultSizeAfterBytes > MAX_VAULT_SIZE_BYTES) {
+    messages.push(`База станет весить ${formatFileSize(vaultSizeAfterBytes)}.`);
+  }
+  if (messages.length === 0) return null;
+  return `${messages.join(" ")} Сохранение будет медленнее, но пройдёт.`;
 }
 
 /** Item -> локальная форма редактора (существующая запись). Экспортирована
@@ -107,6 +263,7 @@ export function itemToFormState(item: Item): EditorFormState {
     tags: [...item.tags],
     fields: item.fields.map((f) => ({ key: makeFieldKey(), name: f.name, value: f.value, secret: f.secret })),
     note: item.note,
+    attachments: item.attachments.map((a) => ({ ...a })),
   };
 }
 
@@ -153,7 +310,7 @@ function defaultFieldsFor(type: ItemType): FieldRow[] {
 /** Пустая форма для новой записи заданного типа - поля предзаполнены по
  * типу (R43), остальное пусто. */
 export function emptyFormState(defaultType: ItemType = "login"): EditorFormState {
-  return { type: defaultType, title: "", tags: [], fields: defaultFieldsFor(defaultType), note: "" };
+  return { type: defaultType, title: "", tags: [], fields: defaultFieldsFor(defaultType), note: "", attachments: [] };
 }
 
 export function addFieldRow(fields: FieldRow[]): FieldRow[] {
@@ -176,23 +333,22 @@ export function removeTag(tags: string[], tag: string): string[] {
   return tags.filter((t) => t !== tag);
 }
 
-/** Форма -> патч для `VaultStore.addItem`/`updateItem`. Ключ `attachments`
- * намеренно не включается: этот экран не управляет вложениями (тикет 11,
- * ещё не построен) - `updateItem` сохраняет существующие `attachments` без
- * изменений, если патч этого поля не содержит (см. vaultStore.ts:
- * `{...existing, ...patch}`), а `addItem` даёт новой записи пустой массив
- * по умолчанию. Именно так следующий тикет (11) должен расширять этот же
- * экран - добавить работу с `attachments` в форму и в этот патч, не трогая
- * остальную логику. */
+/** Форма -> патч для `VaultStore.addItem`/`updateItem`. Тикет 11 (R44):
+ * ключ `attachments` теперь ВКЛЮЧЁН в патч - до этого тикета он намеренно
+ * не выставлялся (экран ещё не управлял вложениями), теперь форма всегда
+ * несёт актуальный список вложений записи (см. `EditorFormState.attachments`,
+ * `itemToFormState`/`emptyFormState` выше), и патч передаёт его как есть в
+ * `store.updateItem`/`addItem`. */
 export function formStateToPatch(
   form: EditorFormState,
-): { type: ItemType; title: string; tags: string[]; fields: ItemField[]; note: string } {
+): { type: ItemType; title: string; tags: string[]; fields: ItemField[]; note: string; attachments: Attachment[] } {
   return {
     type: form.type,
     title: form.title,
     tags: form.tags,
     fields: form.fields.map(({ name, value, secret }) => ({ name, value, secret })),
     note: form.note,
+    attachments: form.attachments,
   };
 }
 
@@ -220,6 +376,14 @@ export function formatCountDecreaseMessage(warning: CountDecreaseWarning): strin
  * "Произошла ошибка"). */
 export const SAVE_FAILED_MESSAGE =
   "Не удалось сохранить базу по этому пути. Проверьте, что каталог доступен для записи, и попробуйте снова";
+
+/** Тексты ошибок для блока вложений (R44, §18) - та же интонация, что уже
+ * принята для остальных ошибок этого экрана и `ImportExportPanel.tsx`
+ * (что случилось и что делать, без "Произошла ошибка"). */
+const DIALOG_OPEN_FAILED_MESSAGE = "Не удалось открыть системный диалог. Попробуйте ещё раз.";
+const ATTACH_FAILED_MESSAGE = "Не удалось прочитать выбранный файл. Попробуйте снова.";
+const DOWNLOAD_FAILED_MESSAGE =
+  "Не удалось сохранить файл. Проверьте, что выбранное место доступно для записи, и попробуйте снова.";
 
 /** Императивный контракт для внешнего кода (в первую очередь тикет 12,
  * который смонтирует Editor в App.tsx). `hasUnsavedChanges`/`requestClose`
@@ -302,6 +466,10 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   const [closeConfirmVisible, setCloseConfirmVisible] = useState(false);
   const [countWarning, setCountWarning] = useState<CountDecreaseWarning | null>(null);
 
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentWarning, setAttachmentWarning] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
   const lastFocusTargetRef = useRef<FocusTarget | null>(null);
   const generatorTargetRef = useRef<FocusTarget | null>(null);
   const pendingCloseResolveRef = useRef<((ok: boolean) => void) | null>(null);
@@ -327,6 +495,82 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     if (tagDraft.trim() === "") return;
     setForm((f) => ({ ...f, tags: addTag(f.tags, tagDraft) }));
     setTagDraft("");
+  }
+
+  /**
+   * Кнопка "Прикрепить файл" (R44, §18): диалог выбора файла
+   * (`@tauri-apps/plugin-dialog`, `open()`) -> байты файла через
+   * `readVault` (тот же `read_vault` из `tauriApi.ts`, что читает
+   * `vault.dat` - несмотря на название, читает произвольный путь в байты,
+   * см. `ImportExportPanel.tsx`, где та же функция уже используется для
+   * импорта чужого JSON-файла) -> `Attachment` через
+   * `attachmentFromFileBytes` -> добавляется в форму (в память, коммит в
+   * `store` и запись на диск - как обычно, только по кнопке "Сохранить").
+   * Мягкое предупреждение о размере (R44.3) считается сразу здесь и
+   * показывается под списком, не только при сохранении.
+   */
+  async function handleAttachFile() {
+    setAttachmentError(null);
+    setAttachmentWarning(null);
+    let filePath: string | string[] | null;
+    try {
+      filePath = await open({ title: "Прикрепить файл", multiple: false, directory: false });
+    } catch (err) {
+      console.error("Editor: не удалось открыть системный диалог выбора файла", err);
+      setAttachmentError(DIALOG_OPEN_FAILED_MESSAGE);
+      return;
+    }
+    if (filePath === null || Array.isArray(filePath)) return; // отмена диалога
+
+    setAttachmentBusy(true);
+    try {
+      const bytes = await readVault(filePath);
+      const attachment = attachmentFromFileBytes(bytes, filePath);
+      // Оценка размера базы ПОСЛЕ добавления - store.estimateSizeBytes()
+      // берёт текущее (ещё не изменённое, форма не закоммичена) состояние
+      // стора, плюс размер нового файла: правка формы сама по себе store
+      // не трогает (коммит - только на "Сохранить", см. commitFormToStore).
+      const vaultSizeAfter = store.estimateSizeBytes() + attachment.size;
+      setForm((f) => ({ ...f, attachments: addAttachment(f.attachments, attachment) }));
+      setAttachmentWarning(buildAttachmentSizeWarning(attachment.size, vaultSizeAfter));
+    } catch (err) {
+      console.error("Editor: не удалось прочитать выбранный файл", err);
+      setAttachmentError(ATTACH_FAILED_MESSAGE);
+    } finally {
+      setAttachmentBusy(false);
+    }
+  }
+
+  /** R45: удаление вложения - обычная правка без версии (в отличие от
+   * секретных полей), как удаление тега - никакого подтверждения, никакого
+   * `history`. */
+  function handleRemoveAttachment(attachmentId: string) {
+    setForm((f) => ({ ...f, attachments: removeAttachment(f.attachments, attachmentId) }));
+    setAttachmentWarning(null); // прежняя оценка размера больше не актуальна
+  }
+
+  /** Кнопка "Скачать" (R44.2): диалог `save()` с именем файла по умолчанию
+   * -> декодирование base64 обратно в байты -> `writeVaultAtomic` в
+   * выбранный путь. Не трогает `store`/форму - чисто экспорт содержимого
+   * наружу. */
+  async function handleDownloadAttachment(attachment: Attachment) {
+    setAttachmentError(null);
+    let targetPath: string | null;
+    try {
+      targetPath = await save({ title: "Скачать вложение", defaultPath: attachment.name });
+    } catch (err) {
+      console.error("Editor: не удалось открыть системный диалог сохранения", err);
+      setAttachmentError(DIALOG_OPEN_FAILED_MESSAGE);
+      return;
+    }
+    if (targetPath === null) return; // пользователь отменил диалог - не ошибка
+
+    try {
+      await writeVaultAtomic(targetPath, decodeAttachmentBytes(attachment));
+    } catch (err) {
+      console.error("Editor: не удалось сохранить вложение на диск", err);
+      setAttachmentError(DOWNLOAD_FAILED_MESSAGE);
+    }
   }
 
   /** Закоммитить текущую форму в `store` (addItem/updateItem, в памяти,
@@ -626,6 +870,53 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             }}
             onChange={(e) => setForm((f) => ({ ...f, note: e.currentTarget.value }))}
           />
+        </div>
+
+        <div className="editor__section">
+          <div className="editor__section-header">
+            <span className="editor__label">Вложения</span>
+            <button
+              type="button"
+              className="editor__attach-btn"
+              onClick={() => {
+                void handleAttachFile();
+              }}
+              disabled={attachmentBusy}
+            >
+              Прикрепить файл
+            </button>
+          </div>
+
+          {form.attachments.length === 0 ? (
+            <p className="editor__attachments-empty">Вложений пока нет.</p>
+          ) : (
+            <ul className="editor__attachments">
+              {form.attachments.map((att) => (
+                <li className="editor__attachment-row" key={att.id}>
+                  <span className="editor__attachment-name">{att.name}</span>
+                  <span className="editor__attachment-size">{formatFileSize(att.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleDownloadAttachment(att);
+                    }}
+                  >
+                    Скачать
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Удалить вложение ${att.name}`}
+                    onClick={() => handleRemoveAttachment(att.id)}
+                  >
+                    Удалить
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {attachmentWarning && <p className="editor__attachment-warning">{attachmentWarning}</p>}
+          {attachmentError && <p className="editor__save-error">{attachmentError}</p>}
         </div>
       </div>
 

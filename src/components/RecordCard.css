@@ -240,6 +240,45 @@
   overflow-wrap: break-word;
 }
 
+.record-card__attachments {
+  margin-top: var(--sp-4);
+}
+
+.record-card__attachments-list {
+  margin: var(--sp-1) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.record-card__attachment-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  background: var(--surface-raised);
+}
+
+.record-card__attachment-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-ui);
+  color: var(--text);
+}
+
+.record-card__attachment-size {
+  flex: none;
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  white-space: nowrap;
+}
+
 .record-card__history {
   margin: var(--sp-4) 0 0;
   padding: 0;

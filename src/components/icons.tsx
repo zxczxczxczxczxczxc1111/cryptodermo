@@ -123,3 +123,23 @@ export function DuplicateIcon({ size }: { size?: number }) {
     </Glyph>
   );
 }
+
+/** Канцелярская кнопка - окно поверх остальных. */
+export function PinIcon({ filled = false, size }: { filled?: boolean; size?: number }) {
+  return (
+    <svg
+      width={size ?? 16}
+      height={size ?? 16}
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 3h6l-1 5 3 3v2H7v-2l3-3z" />
+      <path d="M12 13v8" fill="none" />
+    </svg>
+  );
+}

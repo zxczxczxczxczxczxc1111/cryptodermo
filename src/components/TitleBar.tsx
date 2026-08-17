@@ -25,8 +25,11 @@
  */
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { PinIcon } from "./icons";
 import "./TitleBar.css";
 
+const ON_TOP_LABEL = "Открепить от переднего плана";
+const OFF_TOP_LABEL = "Закрепить поверх других окон";
 const MINIMIZE_LABEL = "Свернуть";
 const MAXIMIZE_LABEL = "Развернуть";
 const RESTORE_LABEL = "Восстановить";
@@ -34,6 +37,18 @@ const CLOSE_LABEL = "Закрыть";
 
 export function TitleBar() {
   const [maximized, setMaximized] = useState(false);
+  /**
+   * Окно поверх остальных. По умолчанию включено (`alwaysOnTop` в
+   * `tauri.conf.json`) по просьбе пользователя от 17.08.2026: при переносе
+   * паролей окно постоянно скрывалось под браузером, и каждый пароль стоил
+   * лишнего переключения.
+   *
+   * Состояние не переживает перезапуск намеренно: настройки живут в
+   * `vault.settings.json` рядом с базой, а рамка окна рисуется до того, как
+   * база вообще открыта, и её пути не знает. Приложение всегда стартует
+   * закреплённым, а снять закрепление это один щелчок.
+   */
+  const [onTop, setOnTop] = useState(true);
 
   // Кнопка разворота должна показывать актуальное состояние: окно можно
   // развернуть и мимо неё - двойным щелчком по полосе, Win+Стрелка вверх,
@@ -64,6 +79,16 @@ export function TitleBar() {
     };
   }, []);
 
+  async function toggleOnTop() {
+    const next = !onTop;
+    try {
+      await getCurrentWindow().setAlwaysOnTop(next);
+      setOnTop(next);
+    } catch (err) {
+      console.error("TitleBar: не удалось изменить закрепление окна поверх остальных", err);
+    }
+  }
+
   async function run(action: "minimize" | "toggle" | "close") {
     const win = getCurrentWindow();
     try {
@@ -81,6 +106,16 @@ export function TitleBar() {
           для области перетаскивания, отдельного обработчика не нужно. */}
       <div className="title-bar__drag" data-tauri-drag-region />
       <div className="title-bar__controls">
+        <button
+          type="button"
+          className={"title-bar__btn" + (onTop ? " title-bar__btn--on" : "")}
+          onClick={() => void toggleOnTop()}
+          aria-pressed={onTop}
+          aria-label={onTop ? ON_TOP_LABEL : OFF_TOP_LABEL}
+          title={onTop ? ON_TOP_LABEL : OFF_TOP_LABEL}
+        >
+          <PinIcon filled={onTop} size={13} />
+        </button>
         <button
           type="button"
           className="title-bar__btn"

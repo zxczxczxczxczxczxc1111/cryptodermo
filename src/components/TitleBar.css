@@ -72,3 +72,9 @@
 .title-bar__btn:active:not(:disabled) {
   transform: none;
 }
+
+/* Закрепление поверх остальных окон включено: кнопка светлее прочих, потому
+   что это состояние, а не наведение. */
+.title-bar__btn--on {
+  color: var(--text-strong);
+}

@@ -39,6 +39,10 @@ class MockWindow {
     console.info("mock: window.toggleMaximize() - в браузере окно не разворачивается");
   }
 
+  async setAlwaysOnTop(value: boolean): Promise<void> {
+    console.info(`mock: window.setAlwaysOnTop(${value}) - в браузере не применимо`);
+  }
+
   async close(): Promise<void> {
     console.info("mock: window.close() - в браузере окно не закрывается");
   }

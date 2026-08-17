@@ -210,6 +210,12 @@ export function importCancelTarget(preImportSnapshot: Item[] | null): Item[] {
  * Подставляется Vite из package.json на этапе сборки (см. vite.config.ts) - не
  * через `getVersion()` из `@tauri-apps/api/app`: тот добавил бы IPC-вызов,
  * который вне Tauri падает и сделал бы экран настроек асинхронным ради строки.
+ *
+ * ВНИМАНИЕ: версия продублирована в ТРЁХ местах и они обязаны совпадать -
+ * `package.json` (отсюда берётся эта строка), `src-tauri/tauri.conf.json` и
+ * `src-tauri/Cargo.toml` (оттуда берутся имена установщиков и свойства
+ * .exe). Первая же сборка после подъёма версии показала расхождение:
+ * приложение сообщало 1.0.0, а установщик назывался 0.1.0.
  */
 const APP_VERSION_LABEL = __APP_VERSION__;
 

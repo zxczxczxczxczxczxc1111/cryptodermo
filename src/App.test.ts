@@ -40,10 +40,6 @@ describe("screenForSidebarId (переключение активного раз
     expect(screenForSidebarId("settings")).toEqual({ kind: "settings" });
   });
 
-  it("maps the importExport sidebar item to the import/export screen", () => {
-    expect(screenForSidebarId("importExport")).toEqual({ kind: "importExport" });
-  });
-
   it("falls back to the list screen for the list id and for any unrecognized id", () => {
     expect(screenForSidebarId("list")).toEqual({ kind: "list" });
     expect(screenForSidebarId("something-unexpected")).toEqual({ kind: "list" });
@@ -56,10 +52,12 @@ describe("sidebarIdForScreen (обратное направление - како
     expect(sidebarIdForScreen({ kind: "editor", itemId: null })).toBe("list");
   });
 
-  it("highlights the matching item for list/settings/importExport", () => {
+  // Раздел "Импорт и экспорт" перестал быть пунктом сайдбара 17.08.2026 -
+  // он переехал внутрь настроек, поэтому и отдельного экрана под него больше
+  // нет. Прежний тест на его отображение удалён вместе с самим экраном.
+  it("highlights the matching item for list/settings", () => {
     expect(sidebarIdForScreen({ kind: "list" })).toBe("list");
     expect(sidebarIdForScreen({ kind: "settings" })).toBe("settings");
-    expect(sidebarIdForScreen({ kind: "importExport" })).toBe("importExport");
   });
 });
 

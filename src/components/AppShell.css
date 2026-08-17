@@ -1,31 +1,33 @@
 /*
- * Три зоны + нижняя полоса (R64, R66). Ширины колонок - структурные
- * константы этого конкретного layout'а, не переиспользуемые дизайн-токены,
- * поэтому заведены как локальные CSS-переменные прямо здесь, а не в
- * tokens.css - но всё равно только через var(--...), без хардкода (R60).
+ * Каркас: узкая полоса иконок, центр, «Недавние» (17.08.2026).
  *
- * Точки перелома (900px / 700px) документированы в tokens.css - здесь
- * только их применение. Второе число (700px) не названо в брифе, принято
- * как craft-решение тикета 03 (см. отчёт по тикету).
+ * Нижней полосы состояния больше нет - её содержимое переехало в Настройки, а
+ * компонент удалён из проекта. Сетка стала однострочной.
+ *
+ * Сайдбар стал полосой иконок вместо колонки в 220px: после переезда «Импорта
+ * и экспорта» в Настройки в нём остался один пункт, и держать под него пятую
+ * часть ширины экрана было нечем оправдать. Освободившиеся ~160px ушли списку
+ * и карточке записи.
+ *
+ * Ширины колонок - структурные константы этого layout'а, не переиспользуемые
+ * дизайн-токены, поэтому заведены локальными переменными здесь же, но всё
+ * равно только через var(--...) (R60).
  */
 .app-shell {
-  --sidebar-w: 220px;
-  --sidebar-w-collapsed: 64px;
+  --sidebar-w: 56px;
   --recent-w: 300px;
 
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr var(--recent-w);
-  grid-template-rows: 1fr auto;
-  grid-template-areas:
-    "sidebar center recent"
-    "statusbar statusbar statusbar";
+  grid-template-rows: 1fr;
+  grid-template-areas: "sidebar center recent";
   height: 100vh;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
-  /* Точки перелома (R91) меняют grid-template-columns через media query -
-     эта transition заставляет сайдбар/колонку "Недавние" именно
-     сворачиваться за 150-200ms (R92), а не переключаться мгновенно. */
+  /* Точка перелома (R91) меняет grid-template-columns - transition заставляет
+     колонку «Недавние» именно сворачиваться за 150-200ms (R92), а не
+     переключаться мгновенно. */
   transition: grid-template-columns var(--transition);
 }
 
@@ -34,32 +36,20 @@
   min-height: 0;
 }
 
-.app-shell .status-bar {
-  grid-area: statusbar;
-}
-
-/* --- Сайдбар --- */
+/* --- Полоса иконок --- */
 
 .app-shell__sidebar {
   grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
   overflow-y: auto;
-  padding: var(--sp-4) var(--sp-2);
+  padding: var(--sp-3) 0;
   border-right: var(--border-w) solid var(--border);
-  background: var(--surface);
-}
-
-.app-shell__nav-section + .app-shell__nav-section {
-  margin-top: var(--sp-6);
-}
-
-.app-shell__nav-heading {
-  display: block;
-  padding: 0 var(--sp-2);
-  margin-bottom: var(--sp-2);
-  font-size: var(--fs-label);
-  letter-spacing: var(--ls-label);
-  text-transform: uppercase;
-  color: var(--text-dim);
+  /* Полоса темнее содержимого, а не светлее: тот же приём, что в панели
+     seattlehome (`--color-rail` там темнее `--color-surface`). Служебная
+     колонка должна уходить на задний план, а не выступать вперёд. */
+  background: var(--rail);
 }
 
 .app-shell__nav-list {
@@ -68,24 +58,27 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-0);
+  align-items: center;
+  gap: var(--sp-1);
 }
 
 .app-shell__nav-item {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
-  width: 100%;
-  padding: var(--sp-2);
+  justify-content: center;
+  /* 36x36 - выше минимума WCAG 2.2 для целей указателя (24x24) с запасом, но
+     без раздувания полосы: это десктоп с мышью, а не сенсорный экран. */
+  width: 36px;
+  height: 36px;
+  padding: 0;
   border: none;
   border-radius: var(--r-field);
   background: transparent;
   color: var(--text-dim);
-  font-family: var(--font-ui);
-  font-size: var(--fs-ui);
-  text-align: left;
   cursor: pointer;
-  transition: background var(--transition), color var(--transition);
+  transition:
+    background var(--transition),
+    color var(--transition);
 }
 
 .app-shell__nav-item:hover {
@@ -100,38 +93,7 @@
 
 .app-shell__nav-item--active {
   background: var(--surface-selected);
-  color: var(--text);
-}
-
-.app-shell__nav-badge {
-  display: none;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: var(--badge-size);
-  height: var(--badge-size);
-  border-radius: 50%;
-  background: var(--surface-raised);
-  /* --text, не --text-dim: на --surface-raised контраст --text-dim не
-     дотягивает до 4.5:1 (см. заметку в tokens.css). Монограмма - реальная
-     буква ярлыка, а не декор, R90 применяется. */
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: var(--fs-ui);
-}
-
-.app-shell__nav-label {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-shell__nav-count {
-  flex: none;
-  color: var(--text-faint);
-  font-size: var(--fs-label);
+  color: var(--text-strong);
 }
 
 /* --- Центр --- */
@@ -150,18 +112,17 @@
   padding: var(--sp-8);
   color: var(--text-faint);
   font-family: var(--font-ui);
-  font-size: var(--fs-ui-lg);
+  font-size: var(--fs-lg);
   text-align: center;
 }
 
-/* --- Точки перелома (R91) --- */
+/* --- Точка перелома (R91) ---
+   Осталась одна: сворачивать сайдбар больше не нужно, он и так узкий. */
 
 @media (max-width: 899px) {
   .app-shell {
     grid-template-columns: var(--sidebar-w) 1fr;
-    grid-template-areas:
-      "sidebar center"
-      "statusbar statusbar";
+    grid-template-areas: "sidebar center";
   }
 
   .app-shell .recent-list {
@@ -169,22 +130,12 @@
   }
 }
 
-@media (max-width: 699px) {
-  .app-shell {
-    grid-template-columns: var(--sidebar-w-collapsed) 1fr;
-  }
-
-  .app-shell__nav-item {
-    justify-content: center;
-  }
-
-  .app-shell__nav-badge {
-    display: flex;
-  }
-
-  .app-shell__nav-label,
-  .app-shell__nav-count,
-  .app-shell__nav-heading {
-    display: none;
-  }
+/*
+ * Настройки открываются как отдельная вкладка на всю ширину: правая колонка
+ * «Недавние» там скрывается. Список недавних записей рядом с полями смены
+ * мастер-пароля не помогает ничем, а место режет заметно.
+ */
+.app-shell--no-recent {
+  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-areas: "sidebar center";
 }

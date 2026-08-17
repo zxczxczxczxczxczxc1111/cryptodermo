@@ -53,14 +53,26 @@
   outline-offset: var(--focus-ring-offset);
 }
 
+/*
+ * Настройки - отдельная вкладка на всю ширину окна (17.08.2026): правая
+ * колонка «Недавние» здесь скрыта.
+ *
+ * Содержимое при этом НЕ растягивается на всю доступную ширину, а стоит
+ * колонкой по центру. Строка поля ввода длиной в тысячу пикселей читается
+ * хуже, а не лучше: глаз теряет начало следующей строки. 640px - привычная
+ * ширина для формы, при которой подпись и поле ещё видны одним взглядом.
+ */
 .settings__body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--sp-4);
+  padding: var(--sp-8) var(--sp-4);
   display: flex;
   flex-direction: column;
   gap: var(--sp-6);
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
 }
 
 .settings__section {
@@ -71,7 +83,6 @@
   border-radius: var(--r-card);
   border: var(--border-w) solid var(--border);
   background: var(--surface-raised);
-  max-width: 420px;
 }
 
 .settings__section-title {
@@ -157,4 +168,49 @@
   margin: 0;
   color: var(--danger);
   font-size: var(--fs-ui);
+}
+
+/*
+ * Блоки, приехавшие в настройки 17.08.2026: импорт-экспорт (был отдельным
+ * пунктом сайдбара) и «Состояние базы» (было постоянной нижней полосой).
+ *
+ * После переезда экран стал длинным - семь разделов подряд простынёй не
+ * читаются. Отсюда разделительная линия сверху у каждого блока и порядок:
+ * сначала всё, что меняют, потом то, на что только смотрят.
+ */
+.settings__block {
+  padding-top: var(--sp-6);
+  border-top: var(--border-w) solid var(--border);
+}
+
+/* Справочные числа. Двухколоночная сетка, а не список пар в строку: значения
+   выравниваются по левому краю друг под другом и читаются столбцом. */
+.settings__facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3) var(--sp-6);
+}
+
+.settings__fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-0);
+}
+
+.settings__fact dt {
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.settings__fact dd {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: var(--fs-lg);
+  /* Табличные цифры: остаток до автоблокировки тикает раз в секунду, и без
+     этого числа прыгали бы по ширине. Прежде это свойство стояло в
+     StatusBar.css - при его удалении легко было потерять. */
+  font-variant-numeric: tabular-nums;
 }

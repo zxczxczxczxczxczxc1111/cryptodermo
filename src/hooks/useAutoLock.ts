@@ -141,7 +141,8 @@ export async function performAutoLock(params: {
 /** Активность пользователя, которая сбрасывает таймер бездействия. */
 const ACTIVITY_EVENTS = ["mousedown", "mousemove", "keydown", "wheel", "touchstart"] as const;
 
-/** Как часто пересчитывается остаток времени до блокировки (для StatusBar). */
+/** Как часто пересчитывается остаток времени до блокировки (показывается в
+ * разделе «Состояние базы» настроек). */
 const TICK_MS = 1000;
 
 export interface UseAutoLockParams {
@@ -161,7 +162,7 @@ export interface UseAutoLockParams {
 
 export interface UseAutoLockResult {
   /** Сколько миллисекунд осталось до автоблокировки - для
-   * `StatusBar.autoLockRemainingMs`. */
+   * раздела «Состояние базы» в настройках. */
   remainingMs: number;
 }
 

@@ -29,7 +29,7 @@
  * JSX-компонент проверен глазами и сборкой (`tsc`/`vite build`), не
  * автотестом.
  */
-import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { VaultStore, type Item } from "../lib/vaultStore";
 import { deriveKey, encrypt, decrypt, DecryptError } from "../lib/crypto";
 import { serializeContainer, parseContainer, FormatError, type VaultHeader } from "../lib/vaultFormat";
@@ -326,9 +326,35 @@ export interface SettingsProps {
   onAutoLockTimeoutChange?: (autoLockTimeoutMs: number) => void;
   /** Закрыть экран настроек и вернуться к списку. */
   onClose: () => void;
+  /**
+   * Состояние базы, доступное только для чтения. Переехало сюда из нижней
+   * полосы, удалённой 17.08.2026: это справочные числа, на которые смотрят
+   * изредка, а постоянная полоса под них занимала место на каждом экране.
+   */
+  storageState?: {
+    itemsCount: number;
+    lastBackupAt: Date | null;
+    autoLockRemainingMs: number;
+    formatVersion: string;
+  };
+  /**
+   * Импорт и экспорт. Отдан слотом, а не перенесён внутрь этого файла: вся
+   * логика подтверждения, отката и сохранения завязана на store и на модалку
+   * уменьшения числа записей, и тащить её сюда значило бы размазать один
+   * сценарий по двум файлам.
+   */
+  importExportSlot?: ReactNode;
 }
 
-export function Settings({ store, vaultPath, onPasswordChanged, onAutoLockTimeoutChange, onClose }: SettingsProps) {
+export function Settings({
+  store,
+  vaultPath,
+  onPasswordChanged,
+  onAutoLockTimeoutChange,
+  onClose,
+  storageState,
+  importExportSlot,
+}: SettingsProps) {
   // --- смена мастер-пароля ---
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -725,7 +751,76 @@ export function Settings({ store, vaultPath, onPasswordChanged, onAutoLockTimeou
             </p>
           )}
         </form>
+
+        {/*
+          Импорт и экспорт. Стоит после всего редактируемого и перед справкой:
+          это действие с базой целиком, самое опасное на экране, и ему не место
+          в одном ряду с полем таймаута.
+        */}
+        {importExportSlot && (
+          <section className="settings__block">
+            <h2 className="settings__section-title">Резервная копия и обмен данными</h2>
+            {importExportSlot}
+          </section>
+        )}
+
+        {/*
+          Состояние базы - только для чтения, поэтому идёт ПОСЛЕДНИМ.
+          Порядок экрана: сначала то, что меняют, потом то, на что смотрят.
+          Раньше эти четыре числа жили в постоянной нижней полосе на каждом
+          экране; смотрят на них изредка, а место они занимали всегда.
+        */}
+        {storageState && (
+          <section className="settings__block">
+            <h2 className="settings__section-title">Состояние базы</h2>
+            <dl className="settings__facts">
+              <div className="settings__fact">
+                <dt>Записей</dt>
+                <dd>{storageState.itemsCount}</dd>
+              </div>
+              <div className="settings__fact">
+                <dt>Резервная копия</dt>
+                <dd>{formatBackupAge(storageState.lastBackupAt)}</dd>
+              </div>
+              <div className="settings__fact">
+                <dt>До автоблокировки</dt>
+                <dd>{formatRemaining(storageState.autoLockRemainingMs)}</dd>
+              </div>
+              <div className="settings__fact">
+                <dt>Версия формата</dt>
+                <dd>{storageState.formatVersion}</dd>
+              </div>
+            </dl>
+          </section>
+        )}
       </div>
     </section>
   );
+}
+
+/**
+ * Возраст резервной копии словами. Своя маленькая копия, а не общий хелпер -
+ * тот же принцип, что уже принят в проекте для `dirOf`/`joinPath`
+ * (см. комментарии в vaultStore.ts): каждый модуль держит свою.
+ *
+ * Отдельно важно, что это НЕ переиспользование `App.formatRelativeTime`:
+ * та функция под шестью assert'ами в App.test.ts, и объединение внезапно
+ * поставило бы формулировки этого экрана под чужие тесты.
+ */
+export function formatBackupAge(lastBackupAt: Date | null, now: Date = new Date()): string {
+  if (!lastBackupAt) return "ещё не было";
+  const minutes = Math.floor((now.getTime() - lastBackupAt.getTime()) / 60000);
+  if (minutes < 1) return "только что";
+  if (minutes < 60) return `${minutes} мин назад`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} ч назад`;
+  return `${Math.floor(hours / 24)} дн назад`;
+}
+
+/** Остаток до автоблокировки в виде M:SS. */
+export function formatRemaining(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }

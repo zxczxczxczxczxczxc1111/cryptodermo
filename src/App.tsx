@@ -52,12 +52,10 @@ import "./App.css";
 export type Screen =
   | { kind: "list" }
   | { kind: "editor"; itemId: string | null }
-  | { kind: "settings" }
-  | { kind: "importExport" };
+  | { kind: "settings" };
 
 const SIDEBAR_LIST_ID = "list";
 const SIDEBAR_SETTINGS_ID = "settings";
-const SIDEBAR_IMPORT_EXPORT_ID = "importExport";
 
 /**
  * id пункта сайдбара -> экран (`AppShell.onSidebarItemSelect`). Неизвестный
@@ -67,7 +65,6 @@ const SIDEBAR_IMPORT_EXPORT_ID = "importExport";
  */
 export function screenForSidebarId(id: string): Screen {
   if (id === SIDEBAR_SETTINGS_ID) return { kind: "settings" };
-  if (id === SIDEBAR_IMPORT_EXPORT_ID) return { kind: "importExport" };
   return { kind: "list" };
 }
 
@@ -169,7 +166,8 @@ export function importCancelTarget(preImportSnapshot: Item[] | null): Item[] {
 }
 
 /**
- * Версия формата контейнера для нижней полосы (R66, StatusBar.formatVersion).
+ * Версия формата контейнера. Показывается в разделе «Состояние базы» экрана
+ * настроек (прежде - в нижней полосе, удалённой 17.08.2026).
  * `vaultFormat.ts` проверяет версию при разборе (`parseContainer` бросает
  * `FormatError` на любой версии, кроме текущей) и не выставляет наружу
  * публичный геттер актуальной версии загруженного стора - у любой базы,
@@ -431,7 +429,7 @@ function App() {
   }, []);
 
   // Единственное место, где считается store.search("") для этого файла -
-  // источник и для счётчика записей StatusBar, и для колонки "Недавние", и
+  // источник и для счётчика записей в сайдбаре, и для колонки "Недавние", и
   // для поиска записи по id при открытии редактора (см. editorItem ниже).
   // Пересчитывается только когда store сменился (новая сессия) или dataVersion
   // выросла (известное этому файлу изменение) - НЕ на каждый тик
@@ -488,7 +486,7 @@ function App() {
    *
    * `dataVersion` поднимается СРАЗУ (не только после успешного
    * `persistAfterImport`), иначе, пока модалка R28 не решена, счётчик
-   * записей в сайдбаре/StatusBar и колонка "Недавние" молча остались бы
+   * записей в сайдбаре и колонка "Недавние" молча остались бы
    * показывать данные ДО импорта - обновление отображения не должно
    * зависеть от того, удастся ли сохранение на диск.
    */
@@ -608,13 +606,15 @@ function App() {
       // уже применил pendingNavigationRef как новый экран.
       return;
     }
-    if (screen.kind === "importExport" && next.kind !== "importExport") {
-      // Уходя с экрана с открытой модалкой R28 - трактуем как отмену (тот
+    if (screen.kind === "settings" && next.kind !== "settings") {
+      // Уходя с настроек с открытой модалкой R28 - трактуем как отмену (тот
       // же откат, что и явная кнопка "Отмена", см. rollbackPendingImport):
       // импорт не должен остаться подвешенным в памяти без решения только
       // потому, что пользователь ушёл через сайдбар, а не через диалог.
       // Плюс забыть ошибку сохранения конкретной попытки - при следующем
       // визите не показывать устаревший текст от прошлого раза.
+      // Условие переехало с экрана importExport на настройки 17.08.2026:
+      // импорт теперь живёт внутри них.
       rollbackPendingImport();
       setImportSaveError(null);
     }
@@ -666,8 +666,9 @@ function App() {
       heading: "Хранилище",
       items: [
         { id: SIDEBAR_LIST_ID, label: "Записи", count: allItems.length },
-        { id: SIDEBAR_IMPORT_EXPORT_ID, label: "Импорт и экспорт" },
-        { id: SIDEBAR_SETTINGS_ID, label: "Настройки" },
+        // Шестерёнка прижата к низу полосы: это служебное действие, а не
+        // раздел с данными, и стоять в одном ряду с «Записями» ей незачем.
+        { id: SIDEBAR_SETTINGS_ID, label: "Настройки", pinnedToBottom: true },
       ],
     },
   ];
@@ -688,15 +689,10 @@ function App() {
       />
       <AppShell
         sidebarSections={sidebarSections}
+        showRecent={screen.kind !== "settings"}
         activeSidebarItemId={sidebarIdForScreen(screen)}
         onSidebarItemSelect={(id) => void navigateTo(screenForSidebarId(id))}
         recentListProps={{ items: recentItems, onSelect: (id) => void navigateTo({ kind: "editor", itemId: id }) }}
-        statusBarProps={{
-          itemsCount: allItems.length,
-          lastBackupAt,
-          autoLockRemainingMs: remainingMs,
-          formatVersion: FORMAT_VERSION_LABEL,
-        }}
       >
         {screen.kind === "list" && (
           <List
@@ -731,59 +727,58 @@ function App() {
             }}
             onAutoLockTimeoutChange={setTimeoutMs}
             onClose={() => void navigateTo({ kind: "list" })}
+            storageState={{
+              itemsCount: allItems.length,
+              lastBackupAt,
+              autoLockRemainingMs: remainingMs,
+              formatVersion: FORMAT_VERSION_LABEL,
+            }}
+            importExportSlot={
+              /* Импорт и экспорт переехал из отдельного пункта сайдбара сюда
+                 (17.08.2026): по сути это служебное действие с базой, а не
+                 раздел с данными. Отдан слотом, а не перенесён внутрь
+                 Settings целиком: вся логика подтверждения импорта, отката и
+                 сохранения завязана на store и на модалку уменьшения числа
+                 записей, и тащить её в другой файл значило бы размазать один
+                 сценарий по двум. */
+              <div onKeyDown={handleImportExportPanelKeyDown}>
+                <ImportExportPanel
+                  store={store}
+                  onImportSuccess={handleImportSuccess}
+                  onError={(message) => console.error("ImportExportPanel:", message)}
+                />
+                {importSaveError && (
+                  <p className="app-screen-panel__error" role="alert">
+                    {importSaveError}
+                  </p>
+                )}
+                {importCountWarning && (
+                  <div className="app-modal-overlay" role="presentation">
+                    <div
+                      ref={importCountWarningRef}
+                      className="app-modal"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="app-import-count-warning-title"
+                    >
+                      <h2 id="app-import-count-warning-title">Число записей уменьшилось</h2>
+                      <p>{formatCountDecreaseMessage(importCountWarning)}</p>
+                      <div className="app-modal__actions">
+                        <button type="button" onClick={rollbackPendingImport}>
+                          Отмена
+                        </button>
+                        <button type="button" onClick={() => void persistAfterImport({ allowCountDecrease: true })}>
+                          Всё равно сохранить
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            }
           />
         )}
 
-        {screen.kind === "importExport" && (
-          <div className="app-screen-panel" onKeyDown={handleImportExportPanelKeyDown}>
-            <header className="app-screen-panel__header">
-              <h1 className="app-screen-panel__title">Резервная копия и обмен данными</h1>
-              <button
-                type="button"
-                className="app-screen-panel__close-btn"
-                aria-label="Закрыть"
-                onClick={() => void navigateTo({ kind: "list" })}
-              >
-                ×
-              </button>
-            </header>
-            <div className="app-screen-panel__body">
-              <ImportExportPanel
-                store={store}
-                onImportSuccess={handleImportSuccess}
-                onError={(message) => console.error("ImportExportPanel:", message)}
-              />
-              {importSaveError && (
-                <p className="app-screen-panel__error" role="alert">
-                  {importSaveError}
-                </p>
-              )}
-            </div>
-
-            {importCountWarning && (
-              <div className="app-modal-overlay" role="presentation">
-                <div
-                  ref={importCountWarningRef}
-                  className="app-modal"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="app-import-count-warning-title"
-                >
-                  <h2 id="app-import-count-warning-title">Число записей уменьшилось</h2>
-                  <p>{formatCountDecreaseMessage(importCountWarning)}</p>
-                  <div className="app-modal__actions">
-                    <button type="button" onClick={rollbackPendingImport}>
-                      Отмена
-                    </button>
-                    <button type="button" onClick={() => void persistAfterImport({ allowCountDecrease: true })}>
-                      Всё равно сохранить
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </AppShell>
     </>
   );

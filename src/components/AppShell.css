@@ -40,7 +40,7 @@
   padding: var(--sp-4) var(--sp-2);
   border-right: var(--border-w) solid var(--border);
   /* Полоса темнее содержимого, а не светлее: служебная колонка должна уходить
-     на задний план. Тот же приём, что в панели seattlehome. */
+     на задний план. */
   background: var(--rail);
 }
 

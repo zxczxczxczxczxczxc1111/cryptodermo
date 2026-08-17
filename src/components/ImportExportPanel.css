@@ -1,0 +1,116 @@
+/*
+ * ImportExportPanel (тикет 10) - те же токены и паттерн модалки, что уже
+ * заведены в Editor.css (диалог "Есть несохранённые изменения") и
+ * PasswordGenerator.css - тень допустима только у модалок/поповеров (R61),
+ * общего --shadow токена в tokens.css нет (см. комментарий в Editor.css),
+ * локальная переменная - тот же приём.
+ */
+
+.import-export-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+
+.import-export-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.import-export-panel__actions button {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--border-strong);
+  background: var(--surface-hover);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.import-export-panel__actions button:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.import-export-panel__actions button:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.import-export-panel__status {
+  margin: 0;
+  min-height: var(--lh-ui);
+  color: var(--accent);
+  font-size: var(--fs-ui);
+}
+
+.import-export-panel__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--fs-ui);
+}
+
+.import-export-panel__modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+}
+
+.import-export-panel__modal {
+  --local-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+
+  width: min(420px, 90vw);
+  padding: var(--sp-6);
+  border-radius: var(--r-card);
+  border: var(--border-w) solid var(--border-strong);
+  background: var(--surface-raised);
+  box-shadow: var(--local-shadow);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+.import-export-panel__modal h2 {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-ui-lg);
+}
+
+.import-export-panel__modal p {
+  margin: 0 0 var(--sp-4);
+  color: var(--text-dim);
+  font-size: var(--fs-ui);
+}
+
+.import-export-panel__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.import-export-panel__modal-actions button {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--border-strong);
+  background: var(--surface-hover);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.import-export-panel__modal-actions button:hover {
+  background: var(--surface);
+}
+
+.import-export-panel__modal-actions button:last-child {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}

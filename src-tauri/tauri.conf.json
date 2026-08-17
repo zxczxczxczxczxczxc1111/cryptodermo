@@ -43,7 +43,14 @@
         "languages": [
           "Russian"
         ],
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "headerImage": "./windows/header.bmp",
+        "sidebarImage": "./windows/sidebar.bmp",
+        "installerIcon": "./icons/icon.ico",
+        "uninstallerIcon": "./icons/icon.ico",
+        "customLanguageFiles": {
+          "Russian": "./windows/Russian.nsh"
+        }
       }
     }
   }

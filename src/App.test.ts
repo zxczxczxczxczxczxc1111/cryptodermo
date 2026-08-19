@@ -4,9 +4,7 @@ import {
   screenForSidebarId,
   sidebarIdForScreen,
   formatRelativeTime,
-  importCancelTarget,
 } from "./App";
-import type { Item } from "./lib/vaultStore";
 
 // Швы, названные тикетом 12 явно ("определение vaultPath на первом
 // запуске", "переключение активного раздела") - остальная сборка App.tsx
@@ -96,36 +94,5 @@ describe("formatRelativeTime (колонка «Недавние»)", () => {
   it("says '<N> г назад' a year or more ago", () => {
     const iso = new Date(NOW - 400 * 24 * 60 * 60_000).toISOString(); // 400 дней назад = 1 год
     expect(formatRelativeTime(iso, NOW)).toBe("1 г назад");
-  });
-});
-
-function makeItem(overrides: Partial<Item> = {}): Item {
-  return {
-    id: "1",
-    type: "login",
-    title: "Test",
-    tags: [],
-    fields: [],
-    note: "",
-    attachments: [],
-    createdAt: "2020-01-01T00:00:00.000Z",
-    updatedAt: "2020-01-01T00:00:00.000Z",
-    ...overrides,
-  };
-}
-
-// Шов, найденный ревью: ImportExportPanel.confirmImport() вызывает
-// store.replaceAllItems() СИНХРОННО, до того как R28 вообще становится
-// известно persistAfterImport - "Отмена" на модалке R28-после-импорта
-// обязана вернуть store к состоянию ДО импорта, не просто спрятать диалог
-// (см. rollbackPendingImport в App.tsx).
-describe("importCancelTarget (откат store при «Отмена» на R28-после-импорта)", () => {
-  it("returns the captured pre-import snapshot when one was recorded", () => {
-    const snapshot = [makeItem({ id: "a" }), makeItem({ id: "b" })];
-    expect(importCancelTarget(snapshot)).toBe(snapshot);
-  });
-
-  it("falls back to an empty collection in the defensive case where no snapshot was captured", () => {
-    expect(importCancelTarget(null)).toEqual([]);
   });
 });

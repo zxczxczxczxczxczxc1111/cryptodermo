@@ -4,21 +4,21 @@ import { useGlobalHotkey, DEFAULT_HOTKEY } from "./hooks/useGlobalHotkey";
 import { useQuickWindowServer } from "./hooks/useQuickWindowServer";
 import { useQuickWindowUnlockGate } from "./hooks/useQuickWindowUnlockGate";
 import { openQuickWindow } from "./lib/openQuickWindow";
-import { useModalFocus } from "./hooks/useModalFocus";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { exeDir } from "./lib/tauriApi";
 import { readSettings, DEFAULT_AUTO_LOCK_TIMEOUT_MS } from "./lib/settingsConfig";
-import { VaultStore, ItemCountDecreasedError, type Item, type ItemType } from "./lib/vaultStore";
+import { VaultStore, type Item, type ItemType } from "./lib/vaultStore";
 import { analyzePasswordHealth } from "./lib/passwordHealth";
+import { useImportRollback } from "./hooks/useImportRollback";
 import { useAutoLock } from "./hooks/useAutoLock";
 import { AppShell, type SidebarSection } from "./components/AppShell";
 import { TYPE_LABELS } from "./components/RecordCard";
 import { ImportExportPanel } from "./components/ImportExportPanel";
 import { LockScreen } from "./screens/LockScreen";
 import { List } from "./screens/List";
-import { Editor, type EditorHandle, formatCountDecreaseMessage, type CountDecreaseWarning } from "./screens/Editor";
+import { Editor, type EditorHandle, formatCountDecreaseMessage } from "./screens/Editor";
 import { Settings } from "./screens/Settings";
 import "./tokens.css";
 // Все модальные окна приложения описаны одним файлом (см. его шапку): до
@@ -153,49 +153,6 @@ const BOOTSTRAP_LOADING_LABEL = "Загрузка...";
 const BOOTSTRAP_ERROR_MESSAGE = "Не удалось определить расположение базы. Перезапустите приложение.";
 
 /**
- * `ImportExportPanel.confirmImport()` (тикет 10) вызывает
- * `store.replaceAllItems(items)`, который только меняет память
- * (`isDirty()` становится true) - запись на диск дословно "остаётся
- * заботой вызывающего кода вне этой панели" (комментарий `replaceAllItems`
- * в vaultStore.ts). Этот код и есть тот вызывающий код: без явного
- * `store.save(vaultPath)` здесь импортированные записи повисли бы только в
- * памяти до случайного следующего сохранения где-то ещё (например, до
- * следующей автоблокировки) - недопустимо для приоритета 1 ("данные не
- * теряются"). Импорт файла с МЕНЬШИМ числом записей, чем было, - ровно тот
- * случай, для которого существует R28 (`ItemCountDecreasedError`) - тот же
- * текст и тот же выбор "Отмена"/"Всё равно сохранить", что и в Editor.tsx
- * (`formatCountDecreaseMessage` импортирована оттуда, а не переписана
- * заново, чтобы формулировка не могла разойтись).
- */
-const IMPORT_SAVE_FAILED_MESSAGE =
-  "Записи заменены, но сохранить базу на диск не удалось. Проверьте, что каталог доступен для записи, и попробуйте снова";
-const CSV_IMPORT_SAVE_FAILED_MESSAGE =
-  "Записи добавлены, но сохранить базу на диск не удалось. Проверьте, что каталог доступен для записи, и попробуйте снова";
-
-/**
- * Что вернуть в `store` при "Отмена" на модалке R28-после-импорта - снимок
- * коллекции ДО импорта, если он есть (см. `handleImportSuccess`/
- * `preImportSnapshotRef` в `App`). Найдено ревью: `ImportExportPanel.
- * confirmImport()` уже вызвал `store.replaceAllItems()` СИНХРОННО, до того
- * как R28 вообще стало известно - без явного отката "Отмена" только прятала
- * модалку, а store оставался с урезанной коллекцией в памяти (`isDirty()`
- * true, `loadedCount` не откачен): следующая автоблокировка молча
- * досохранила бы ровно то, от чего пользователь отказался
- * (`performAutoLock` перехватывает ту же `ItemCountDecreasedError` и сам
- * повторяет `save()` с `allowCountDecrease: true`), а следующее обычное
- * сохранение где угодно ещё (например, в Editor) упёрлось бы в ту же R28-
- * проверку с чужими, непонятными пользователю цифрами.
- *
- * Пустой массив - защитный фолбэк на случай отсутствующего снимка (не
- * должен случаться на практике: снимок выставляется раньше, чем вообще
- * появляется возможность показать эту модалку, см. `handleImportSuccess`) -
- * лучше пустая база, чем `store.replaceAllItems(null as any)`.
- */
-export function importCancelTarget(preImportSnapshot: Item[] | null): Item[] {
-  return preImportSnapshot ?? [];
-}
-
-/**
  * Версия формата контейнера. Показывается в разделе «Состояние базы» экрана
  * настроек (прежде - в нижней полосе, удалённой 17.08.2026).
  * `vaultFormat.ts` проверяет версию при разборе (`parseContainer` бросает
@@ -315,10 +272,6 @@ function App() {
    */
   const closeToTrayRef = useRef(false);
   const [lastBackupAt, setLastBackupAt] = useState<Date | null>(null);
-  const [importCountWarning, setImportCountWarning] = useState<CountDecreaseWarning | null>(null);
-  const importCountWarningRef = useRef<HTMLDivElement>(null);
-  useModalFocus(importCountWarningRef, Boolean(importCountWarning));
-  const [importSaveError, setImportSaveError] = useState<string | null>(null);
 
   const editorRef = useRef<EditorHandle>(null);
   /** Куда перейти ПОСЛЕ того, как открытый редактор согласится закрыться
@@ -326,11 +279,6 @@ function App() {
    * запросил сам редактор (кнопка "×"/Esc), тогда по умолчанию возвращаемся
    * к списку. */
   const pendingNavigationRef = useRef<Screen | null>(null);
-  /** Снимок коллекции ПЕРЕД последним импортом - для отката, если
-   * пользователь откажется от модалки R28-после-импорта (см.
-   * `handleImportSuccess`/`rollbackPendingImport`/`importCancelTarget`
-   * выше). `null`, если сейчас нет незавершённого импорта, ждущего решения. */
-  const preImportSnapshotRef = useRef<Item[] | null>(null);
   /** Последнее значение `screen` в ref - тот же приём, что уже применяет
    * `useAutoLock.ts` (`latestRef`) для той же задачи: подписка на закрытие
    * окна (см. эффект ниже) регистрируется один раз при монтировании, но её
@@ -585,109 +533,19 @@ function App() {
     setDataVersion((v) => v + 1);
   }
 
-  /**
-   * Записать на диск после `ImportExportPanel.onImportSuccess` (см.
-   * `IMPORT_SAVE_FAILED_MESSAGE` выше) - `store.replaceAllItems()` уже
-   * применил замену в памяти, здесь только `save()`. `allowCountDecrease`
-   * передаётся, только когда пользователь явно подтвердил модалку R28 ниже.
-   */
-  async function persistAfterImport(opts?: { allowCountDecrease?: boolean }) {
-    if (!store || !vaultPath) return;
-    try {
-      await store.save(vaultPath, opts);
-      preImportSnapshotRef.current = null; // сохранено (или подтверждено) - откатывать больше нечего
-      setImportCountWarning(null);
-      setImportSaveError(null);
-      bumpDataVersion(); // на этот раз - чтобы обновить lastBackupAt новым бэкапом
-    } catch (err) {
-      if (err instanceof ItemCountDecreasedError) {
-        setImportCountWarning({ loaded: err.loaded, current: err.current });
-      } else {
-        console.error("App: не удалось сохранить базу после импорта", err);
-        setImportSaveError(IMPORT_SAVE_FAILED_MESSAGE);
-      }
-    }
-  }
-
-  /**
-   * `ImportExportPanel.onImportSuccess` - `store.replaceAllItems()` уже
-   * заменил коллекцию В ПАМЯТИ синхронно, до этого колбэка. `allItems` в
-   * замыкании ЭТОГО рендера - ещё старый (React не перерисовал компонент
-   * между синхронным `replaceAllItems()` внутри `ImportExportPanel` и этим
-   * вызовом) массив, ДО импорта - ровно то, к чему нужно вернуться, если
-   * пользователь откажется от модалки R28 ниже (см. `rollbackPendingImport`).
-   *
-   * `dataVersion` поднимается СРАЗУ (не только после успешного
-   * `persistAfterImport`), иначе, пока модалка R28 не решена, счётчик
-   * записей в сайдбаре и колонка "Недавние" молча остались бы
-   * показывать данные ДО импорта - обновление отображения не должно
-   * зависеть от того, удастся ли сохранение на диск.
-   */
-  function handleImportSuccess() {
-    preImportSnapshotRef.current = allItems;
-    bumpDataVersion();
-    void persistAfterImport();
-  }
-
-  /**
-   * `ImportExportPanel.onCsvImportSuccess` (19.08.2026) - в отличие от
-   * `handleImportSuccess` выше, вся машинерия R28 (снимок для отката,
-   * модалка "число записей уменьшилось") здесь не нужна: CSV-импорт только
-   * ДОБАВЛЯЕТ записи через `store.addItem`, число записей в сторе не может
-   * уменьшиться, значит `store.save()` физически не бросит
-   * `ItemCountDecreasedError` - обычный `try/catch` на случай ошибки
-   * записи на диск (диск занят, нет прав и т.п.), тот же текстовый слот
-   * `importSaveError`, что и у обычного импорта, с другим текстом.
-   */
-  async function handleCsvImportSuccess() {
-    bumpDataVersion();
-    if (!store || !vaultPath) return;
-    try {
-      await store.save(vaultPath);
-      setImportSaveError(null);
-    } catch (err) {
-      console.error("App: не удалось сохранить базу после CSV-импорта", err);
-      setImportSaveError(CSV_IMPORT_SAVE_FAILED_MESSAGE);
-    }
-  }
-
-  /**
-   * "Отмена" на модалке R28-после-импорта (кнопка, Esc или уход с экрана
-   * без явного решения - см. `handleImportExportPanelKeyDown`/`navigateTo`
-   * ниже) - откатывает `store` к снимку ДО импорта, а не просто прячет
-   * диалог (найдено ревью, см. `importCancelTarget` выше). Безопасно звать
-   * при любом состоянии `importCountWarning` (в т.ч. `null`, например при
-   * уходе с экрана без открытой модалки) - тогда просто ничего не делает,
-   * не пытается "откатить" то, чего не было.
-   */
-  function rollbackPendingImport() {
-    if (store && importCountWarning) {
-      store.replaceAllItems(importCancelTarget(preImportSnapshotRef.current));
-      bumpDataVersion();
-    }
-    preImportSnapshotRef.current = null;
-    setImportCountWarning(null);
-  }
-
-  /**
-   * Сброс переходного состояния экрана "Импорт и экспорт" - обязателен и на
-   * блокировке, и на разблокировке (см. `handleLock`/`handleUnlock` ниже).
-   * Найдено ревью: если модалка R28-после-импорта осталась нерешённой на
-   * момент автоблокировки, `performAutoLock` (useAutoLock.ts) сама ловит ту
-   * же `ItemCountDecreasedError` и молча пересохраняет с
-   * `allowCountDecrease: true` - её собственная, отдельная от этой модалки
-   * защита (решение тикета 06: "диалог показать некому"). Импорт при этом
-   * реально фиксируется на диске мимо этой модалки, но без сброса здесь
-   * `importCountWarning`/`preImportSnapshotRef` пережили бы блокировку и
-   * всплыли в СЛЕДУЮЩЕЙ сессии (новый `store` после `onUnlock`) с цифрами и
-   * снимком от ПРЕДЫДУЩЕЙ сессии - клик "Отмена" откатил бы только что
-   * открытый, никак не связанный с ними стор к чужим данным.
-   */
-  function resetPendingImportState() {
-    setImportCountWarning(null);
-    setImportSaveError(null);
-    preImportSnapshotRef.current = null;
-  }
+  /** Импорт с откатом (тикет 13: вынесено в отдельный хук, см. его шапку -
+   * снимок коллекции до импорта, модалка R28-после-импорта, "Отмена"/"Всё
+   * равно сохранить"). */
+  const {
+    importCountWarning,
+    importCountWarningRef,
+    importSaveError,
+    handleImportSuccess,
+    handleCsvImportSuccess,
+    persistAfterImport,
+    rollbackPendingImport,
+    resetPendingImportState,
+  } = useImportRollback({ store, vaultPath, allItems, bumpDataVersion });
 
   function handleUnlock(newStore: VaultStore, unlockedVaultPath: string) {
     resetPendingImportState();
@@ -771,7 +629,7 @@ function App() {
       // Условие переехало с экрана importExport на настройки 17.08.2026:
       // импорт теперь живёт внутри них.
       rollbackPendingImport();
-      setImportSaveError(null);
+      resetPendingImportState();
     }
     setScreen(next);
   }

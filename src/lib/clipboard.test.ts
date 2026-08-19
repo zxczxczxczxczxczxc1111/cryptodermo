@@ -1,13 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Записываем через плагин Tauri, а не через `navigator.clipboard` - см.
+// комментарий в `clipboard.ts`, почему. Мокается граница модуля, которую
+// `clipboard.ts` реально импортирует (тот же приём, что в остальных тестах
+// проекта - см. `useAutoLock.test.ts`), а не браузерный API, который код
+// больше не вызывает.
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
+  writeText: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { clearNow, copyWithAutoClear } from "./clipboard";
 
+const writeTextMock = vi.mocked(writeText);
+
 function mockClipboard() {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  Object.defineProperty(globalThis.navigator, "clipboard", {
-    value: { writeText },
-    configurable: true,
-  });
-  return writeText;
+  writeTextMock.mockClear();
+  return writeTextMock;
 }
 
 describe("copyWithAutoClear", () => {

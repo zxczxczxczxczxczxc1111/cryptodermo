@@ -349,6 +349,10 @@ export interface SettingsProps {
     lastBackupAt: Date | null;
     autoLockRemainingMs: number;
     appVersion: string;
+    /** Тикет 12: пассивная проверка базы, без уведомлений - те же два
+     * числа, что считает `analyzePasswordHealth` над полями "Пароль". */
+    weakPasswordsCount: number;
+    reusedPasswordsCount: number;
   };
   /**
    * Импорт и экспорт. Отдан слотом, а не перенесён внутрь этого файла: вся
@@ -1048,6 +1052,14 @@ export function Settings({
               <div className="settings__fact">
                 <dt>Версия приложения</dt>
                 <dd>{storageState.appVersion}</dd>
+              </div>
+              <div className="settings__fact">
+                <dt>Слабых паролей</dt>
+                <dd>{storageState.weakPasswordsCount}</dd>
+              </div>
+              <div className="settings__fact">
+                <dt>Повторяющихся паролей</dt>
+                <dd>{storageState.reusedPasswordsCount}</dd>
               </div>
             </dl>
           </section>

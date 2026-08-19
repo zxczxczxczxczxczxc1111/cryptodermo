@@ -11,6 +11,7 @@ import { listen } from "@tauri-apps/api/event";
 import { exeDir } from "./lib/tauriApi";
 import { readSettings, DEFAULT_AUTO_LOCK_TIMEOUT_MS } from "./lib/settingsConfig";
 import { VaultStore, ItemCountDecreasedError, type Item, type ItemType } from "./lib/vaultStore";
+import { analyzePasswordHealth } from "./lib/passwordHealth";
 import { useAutoLock } from "./hooks/useAutoLock";
 import { AppShell, type SidebarSection } from "./components/AppShell";
 import { TYPE_LABELS } from "./components/RecordCard";
@@ -568,6 +569,13 @@ function App() {
   // здесь тот же принцип).
   const allItems = useMemo(() => (store ? store.search("") : []), [store, dataVersion]);
 
+  /** Слабые/повторяющиеся пароли (тикет 12) - те же зависимости
+   * пересчёта, что у `allItems` выше, и по той же причине не завязано на
+   * тик автоблокировки. Результат уходит в `Settings` как ещё два факта в
+   * "Состояние базы" - без уведомлений, только число, на которое смотрят,
+   * когда сами решили посмотреть (условие пользователя: "без спама"). */
+  const passwordHealth = useMemo(() => analyzePasswordHealth(allItems), [allItems]);
+
   /** Что-то изменило store в обход обычного пути "открыть экран - увидеть
    * актуальные данные" (сейчас единственный источник - List.onStoreChanged,
    * см. её комментарий: удаление вложения из карточки не уводит пользователя
@@ -938,6 +946,8 @@ function App() {
               lastBackupAt,
               autoLockRemainingMs: remainingMs,
               appVersion: APP_VERSION_LABEL,
+              weakPasswordsCount: passwordHealth.weakCount,
+              reusedPasswordsCount: passwordHealth.reusedCount,
             }}
             importExportSlot={
               /* Импорт и экспорт переехал из отдельного пункта сайдбара сюда

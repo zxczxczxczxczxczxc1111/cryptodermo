@@ -14,6 +14,7 @@ import {
 import { TOTP_FIELD_NAME, looksLikeTotp, normalizeTotpInput } from "../lib/totp";
 import { estimatePasswordStrength } from "../lib/passwordStrength";
 import { readVault, writeVaultAtomic } from "../lib/tauriApi";
+import { base64ToBytes, bytesToBase64 } from "../lib/base64";
 import { PasswordGenerator } from "../components/PasswordGenerator";
 import { previewSupportHint } from "../lib/attachmentPreview";
 import "./Editor.css";
@@ -184,28 +185,6 @@ function makeFieldKey(): string {
  */
 export function inputValueFromEvent(e: { currentTarget: { value: string } }): string {
   return e.currentTarget.value;
-}
-
-/** base64 (стандартный алфавит) -> байты, без Node-специфичного Buffer.
- * Та же логика, что в `vaultStore.ts`/`vaultFormat.ts`/`Settings.tsx` -
- * приватные хелперы других модулей не экспортированы (решение тикета 02),
- * у каждого файла своя маленькая копия. */
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/** Обратное преобразование: байты -> base64 (стандартный алфавит). */
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
 }
 
 /** Имя файла из полного ОС-пути, который отдаёт диалог выбора файла

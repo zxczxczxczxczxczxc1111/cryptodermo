@@ -27,6 +27,7 @@
  * памяти сам в момент установки/смены PIN.
  */
 import { deriveKey, encrypt, decrypt, DecryptError } from "./crypto";
+import { base64ToBytes, bytesToBase64 } from "./base64";
 
 /** Сколько неверных попыток PIN подряд ведёт к временной блокировке входа. */
 export const PIN_LOCKOUT_MAX_ATTEMPTS = 3;
@@ -72,28 +73,6 @@ export class PinUnlockError extends Error {
     super(message);
     this.name = "PinUnlockError";
   }
-}
-
-/** base64 (стандартный алфавит) -> байты - своя маленькая копия, как уже
- * принято в проекте (`vaultStore.ts`/`vaultFormat.ts`/`RecordCard.tsx`/
- * `Settings.tsx` и т.д. - приватные хелперы других модулей не экспортируются,
- * у каждого файла своя копия). */
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/** Обратное преобразование: байты -> base64 (стандартный алфавит). */
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
 }
 
 /** Чисто цифровой PIN, от `PIN_MIN_LENGTH` до `PIN_MAX_LENGTH` символов -

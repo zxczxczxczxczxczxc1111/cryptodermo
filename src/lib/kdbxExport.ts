@@ -59,17 +59,9 @@ import * as kdbxweb from "kdbxweb";
 import type { Item, ItemField } from "./vaultStore";
 import { looksLikeTotp } from "./totp";
 import { isOpenableUrl } from "./openExternal";
-
-/** База64 -> байты, без Node-специфичного Buffer - та же маленькая копия,
- * что и в остальных модулях проекта (CLAUDE.md - "у каждого модуля своя
- * копия"). Нужна здесь для вложений: `Attachment.data` в нашей модели уже
- * base64, `kdbxweb` ждёт сырые байты. */
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
+// Для вложений: `Attachment.data` в нашей модели уже base64, `kdbxweb`
+// ждёт сырые байты.
+import { base64ToBytes } from "./base64";
 
 /** Одна запись KeePass, которую предстоит создать - результат разбора
  * `Item` на группы аккаунтов (см. `splitItemIntoKdbxEntries` ниже), ДО

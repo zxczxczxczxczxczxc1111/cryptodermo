@@ -34,6 +34,7 @@ import { VaultStore, type Item } from "../lib/vaultStore";
 import { deriveKey, encrypt, decrypt, DecryptError } from "../lib/crypto";
 import { serializeContainer, parseContainer, FormatError, type VaultHeader } from "../lib/vaultFormat";
 import { readVault } from "../lib/tauriApi";
+import { base64ToBytes, bytesToBase64 } from "../lib/base64";
 import { readSettings, updateSettings, DEFAULT_AUTO_LOCK_TIMEOUT_MS } from "../lib/settingsConfig";
 import { isValidPinFormat, setUpPin, resetPinLockout, PIN_MAX_LENGTH } from "../lib/pinLock";
 import { PasswordField } from "../components/PasswordField";
@@ -51,27 +52,6 @@ import {
 import { openExternal } from "../lib/openExternal";
 import "../tokens.css";
 import "./Settings.css";
-
-/** base64 (стандартный алфавит) -> байты - та же маленькая копия, что уже
- * есть в vaultStore.ts/vaultFormat.ts (между модулями дублируется умышленно,
- * не экспортируется - см. их комментарии, тот же принцип здесь). */
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/** Обратное преобразование: байты -> base64 (стандартный алфавит). */
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
 
 export type ChangePasswordResult = { ok: true; store: VaultStore } | { ok: false; message: string };
 

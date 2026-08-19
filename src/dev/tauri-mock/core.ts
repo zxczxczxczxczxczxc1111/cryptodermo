@@ -20,18 +20,9 @@ import {
   mockRotateBackups,
   mockExeDir,
 } from "./fs";
-
-/** base64 (стандартный алфавит) -> байты, через нативный `atob` - без
- * собственной копии `base64ToBytes`, этот файл никогда не участвует в
- * реальной сборке (только `--mode mock`), незачем следовать конвенции
- * "своя копия хелпера в каждом модуле", которая существует ради
- * независимости продакшен-модулей друг от друга. */
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
+// Общий модуль (`src/lib/base64.ts`) - чистый leaf без Tauri-зависимостей,
+// подмена `@tauri-apps/api/core` этим файлом цикла не создаёт.
+import { base64ToBytes } from "../../lib/base64";
 
 /** Задержка, имитирующая настоящий IPC. Без неё интерфейс в браузере ведёт
  * себя заметно бодрее, чем в живом окне, и состояния загрузки невозможно ни

@@ -30,6 +30,9 @@ import { VaultStore } from "../lib/vaultStore";
 import { DecryptError } from "../lib/crypto";
 import { parseContainer, FormatError } from "../lib/vaultFormat";
 import { readVault, type BackupInfo } from "../lib/tauriApi";
+// Нужна здесь только чтобы декодировать `header.kdf.salt` перед вызовом
+// `pinLock.setUpPin` (см. `submitPinSetup` ниже).
+import { base64ToBytes } from "../lib/base64";
 import { readSettings, updateSettings } from "../lib/settingsConfig";
 import {
   isValidPinFormat,
@@ -67,20 +70,6 @@ import appIcon from "../assets/logo.png";
 import { PasswordField } from "../components/PasswordField";
 import "../tokens.css";
 import "./LockScreen.css";
-
-/** base64 (стандартный алфавит) -> байты - своя маленькая копия, как уже
- * принято в проекте (`vaultStore.ts`/`vaultFormat.ts`/`pinLock.ts` и т.д. -
- * приватные хелперы других модулей не экспортируются). Нужна здесь только
- * для того, чтобы декодировать `header.kdf.salt` перед вызовом
- * `pinLock.setUpPin` (см. `submitPinSetup` ниже). */
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
 
 /** Единый текст ошибки на неверный пароль/битый файл - AES-GCM не различает
  * эти два случая криптографически (R94.1), дословно из брифа/ticket. */

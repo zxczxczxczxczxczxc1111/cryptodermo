@@ -9,20 +9,10 @@
  * только один файл.
  */
 import { invoke } from "@tauri-apps/api/core";
-
-/** Перевести байты в base64 (стандартный алфавит) без Node-специфичного
- * Buffer - та же маленькая копия, что уже есть в `vaultFormat.ts`,
- * `vaultStore.ts`, `pinLock.ts` и других модулях (см. CLAUDE.md - "у
- * каждого модуля своя копия"). Нужна здесь, чтобы `writeVaultAtomic`
- * передавала байты базы одной компактной строкой, а не массивом из
- * миллионов отдельных JSON-чисел (см. комментарий у функции). */
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
+// Нужна здесь, чтобы `writeVaultAtomic` передавала байты базы одной
+// компактной строкой, а не массивом из миллионов отдельных JSON-чисел
+// (см. комментарий у самой функции).
+import { bytesToBase64 } from "./base64";
 
 /** Один файл резервной копии - зеркало `BackupInfo` из `src-tauri/src/vault_fs.rs`. */
 export type BackupInfo = {

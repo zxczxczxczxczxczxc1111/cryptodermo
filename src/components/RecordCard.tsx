@@ -3,6 +3,7 @@ import { useModalFocus } from "../hooks/useModalFocus";
 import { save } from "@tauri-apps/plugin-dialog";
 import type { Attachment, Item, ItemField, ItemType, VaultStore } from "../lib/vaultStore";
 import { writeVaultAtomic } from "../lib/tauriApi";
+import { base64ToBytes } from "../lib/base64";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { StatusDot } from "./StatusDot";
 import { EyeIcon, CopyIcon, CheckIcon, QrIcon, StarIcon, DuplicateIcon, ExternalIcon } from "./icons";
@@ -40,22 +41,9 @@ export const TYPE_LABELS: Record<ItemType, string> = {
 
 const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
-/** base64 (стандартный алфавит) -> байты. Та же логика, что в
- * `vaultStore.ts`/`vaultFormat.ts`/`Settings.tsx`/`Editor.tsx` - приватные
- * хелперы других модулей не экспортированы (решение тикета 02), у каждого
- * файла своя маленькая копия. */
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
 /** Человекочитаемый размер файла - тот же формат, что в `Editor.tsx`
- * (`formatFileSize`), своя маленькая копия по тому же принципу, что и
- * `base64ToBytes` выше. */
+ * (`formatFileSize`), своя маленькая копия по общему принципу проекта
+ * (см. CLAUDE.md). */
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} Б`;
   const units = ["КБ", "МБ", "ГБ"];

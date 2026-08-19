@@ -18,6 +18,7 @@
  */
 
 import { deriveKey, encrypt, decrypt, DEFAULT_ITERATIONS } from "./crypto";
+import { base64ToBytes, bytesToBase64 } from "./base64";
 import {
   serializeContainer,
   parseContainer,
@@ -244,28 +245,6 @@ type KdfInfo = {
   iterations: number;
   cipher: string;
 };
-
-/** base64 (стандартный алфавит) -> байты, без Node-специфичного Buffer.
- * Та же логика, что и в `vaultFormat.ts` - модуль намеренно не импортирует
- * приватные хелперы другого модуля (они не экспортированы), у каждого файла
- * своя маленькая копия, как и было решено в тикете 02. */
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/** Обратное преобразование: байты -> base64 (стандартный алфавит). */
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
 
 /** Каталог файла из полного пути. Понимает и `/`, и `\` - база может лежать
  * на Windows-пути с обратными слэшами. Возвращает `.`, если разделителя нет

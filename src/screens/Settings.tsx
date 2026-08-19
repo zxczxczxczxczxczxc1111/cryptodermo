@@ -433,7 +433,7 @@ export function Settings({
       setAutoLockMinutes(msToMinutes(settings.autoLockTimeoutMs));
       setPinConfigured(Boolean(settings.pin));
       setUpdateEnabled(settings.updateCheckEnabled === true);
-      setBreachEnabled(settings.breachCheckEnabled === true);
+      setBreachEnabled(settings.passwordCheckEnabled === true);
       setHotkey(settings.hotkey ?? DEFAULT_HOTKEY);
       setHotkeyEnabled(settings.hotkeyEnabled === true);
       setCloseToTray(settings.closeToTray === true);
@@ -556,7 +556,7 @@ export function Settings({
     setBreachEnabled(next);
     if (!next) setBreachState({ kind: "idle" });
     try {
-      await updateSettings(vaultPath, { breachCheckEnabled: next });
+      await updateSettings(vaultPath, { passwordCheckEnabled: next });
     } catch (err) {
       console.error("Settings: не удалось сохранить настройку проверки утечек", err);
       setBreachEnabled(!next);

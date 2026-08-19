@@ -176,3 +176,30 @@ describe("writeSettings / updateSettings", () => {
     expect(JSON.parse(new TextDecoder().decode(bytes))).toEqual(result);
   });
 });
+
+// Переименование ключа 19.08.2026: `breachCheckEnabled` -> `passwordCheckEnabled`.
+// У пользователя галочка уже включена, и она не должна слететь при обновлении.
+describe("совместимость ключа проверки паролей", () => {
+  const withFile = (raw: object) =>
+    readVaultMock.mockResolvedValue(new TextEncoder().encode(JSON.stringify(raw)));
+
+  it("старое имя ключа читается как новое", async () => {
+    withFile({ breachCheckEnabled: true });
+    expect((await readSettings("D:/v/vault.dat")).passwordCheckEnabled).toBe(true);
+  });
+
+  it("новое имя ключа читается как есть", async () => {
+    withFile({ passwordCheckEnabled: true });
+    expect((await readSettings("D:/v/vault.dat")).passwordCheckEnabled).toBe(true);
+  });
+
+  it("если в файле оба ключа, побеждает новый", async () => {
+    withFile({ breachCheckEnabled: true, passwordCheckEnabled: false });
+    expect((await readSettings("D:/v/vault.dat")).passwordCheckEnabled).toBe(false);
+  });
+
+  it("без ключа настройка не выставлена вовсе (по умолчанию выключено)", async () => {
+    withFile({});
+    expect((await readSettings("D:/v/vault.dat")).passwordCheckEnabled).toBeUndefined();
+  });
+});

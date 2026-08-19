@@ -60,10 +60,18 @@ export type VaultSettings = {
    * такое молча за пользователя нельзя (см. `updateCheck.ts`).
    */
   updateCheckEnabled?: boolean;
-  /** Разрешена ли проверка паролей на утечки (HIBP). Второе и последнее
-   * место, где приложение ходит в сеть; как и проверка обновлений, выключено
-   * по умолчанию и запускается только кнопкой. */
-  breachCheckEnabled?: boolean;
+  /**
+   * Включена ли проверка паролей: локальные метки проблемных паролей
+   * (слабый, повторяющийся) в списке и карточке, плюс РАЗРЕШЕНИЕ на проверку
+   * утечек. Сама проверка утечек - единственная сетевая часть - по-прежнему
+   * запускается только кнопкой, само приложение в сеть не ходит.
+   *
+   * До 19.08.2026 ключ назывался `breachCheckEnabled` и означал только
+   * разрешение на сеть. Старое имя читается для совместимости (у тех, кто
+   * уже включил галочку, она не должна слететь) и исчезает само при первой
+   * же записи настроек, потому что `writeSettings` пишет объект целиком.
+   */
+  passwordCheckEnabled?: boolean;
   /** Когда проверяли в последний раз, ISO8601 - чтобы не спрашивать GitHub на
    * каждом запуске. */
   lastUpdateCheckAt?: string;
@@ -172,7 +180,9 @@ export async function readSettings(vaultPath: string): Promise<VaultSettings> {
     if (isValidPinLockoutState(obj.pinLockout)) settings.pinLockout = obj.pinLockout;
     if (typeof obj.pinSetupOffered === "boolean") settings.pinSetupOffered = obj.pinSetupOffered;
     if (typeof obj.updateCheckEnabled === "boolean") settings.updateCheckEnabled = obj.updateCheckEnabled;
-    if (typeof obj.breachCheckEnabled === "boolean") settings.breachCheckEnabled = obj.breachCheckEnabled;
+    // Сначала старое имя, потом новое: если в файле лежат оба, побеждает новое.
+    if (typeof obj.breachCheckEnabled === "boolean") settings.passwordCheckEnabled = obj.breachCheckEnabled;
+    if (typeof obj.passwordCheckEnabled === "boolean") settings.passwordCheckEnabled = obj.passwordCheckEnabled;
     if (typeof obj.lastUpdateCheckAt === "string") settings.lastUpdateCheckAt = obj.lastUpdateCheckAt;
     // Сочетание проверяется на осмысленность: в файле может лежать что угодно,
     // включая правку руками, а негодная строка молча сломала бы регистрацию.

@@ -126,7 +126,11 @@ describe("checkPasswordsBreached", () => {
     const result = await checkPasswordsBreached(["password", "Tr0ub4dor&3xyzQW"], { delayMs: 0 });
 
     expect(calls).toBe(2);
-    expect(result).toEqual({ breachedCount: 1, checkedCount: 2 });
+    expect(result.breachedCount).toBe(1);
+    expect(result.checkedCount).toBe(2);
+    // Сами значения нужны, чтобы пометить записи значком - без них значок
+    // было бы нечем поставить.
+    expect([...result.breachedValues]).toEqual(["password"]);
   });
 
   it("сообщает о прогрессе на каждом шаге", async () => {
@@ -169,6 +173,32 @@ describe("checkPasswordsBreached", () => {
 
     const result = await checkPasswordsBreached([], { delayMs: 0 });
     expect(calls).toBe(0);
-    expect(result).toEqual({ breachedCount: 0, checkedCount: 0 });
+    expect(result.breachedCount).toBe(0);
+    expect(result.checkedCount).toBe(0);
+    expect(result.breachedValues.size).toBe(0);
+  });
+});
+
+// Прерывание отдаёт ЧАСТИЧНЫЙ набор, а не пустой: пометить то, что уже
+// успели узнать, честнее, чем выбросить результат работы.
+describe("checkPasswordsBreached: частичный результат при прерывании", () => {
+  it("возвращает найденное до остановки", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", async (url: string) => {
+      calls++;
+      const leaked = url.endsWith("5BAA6");
+      return {
+        ok: true,
+        text: async () => (leaked ? "1E4C9B93F3F0682250B6CF8331B7EE68FD8:100" : "ABC:0"),
+      } as Response;
+    });
+
+    const result = await checkPasswordsBreached(["password", "Tr0ub4dor&3xyzQW", "ещё"], {
+      delayMs: 0,
+      shouldStop: () => calls >= 2,
+    });
+
+    expect(result.checkedCount).toBe(2);
+    expect([...result.breachedValues]).toEqual(["password"]);
   });
 });

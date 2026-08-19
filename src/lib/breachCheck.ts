@@ -111,6 +111,17 @@ export type BreachCheckSummary = {
   breachedCount: number;
   /** Сколько уникальных паролей проверено всего. */
   checkedCount: number;
+  /**
+   * САМИ засвеченные значения - нужны, чтобы пометить проблемные записи
+   * значком в списке и карточке. Значения, а не идентификаторы записей:
+   * поменял пароль - пометка снимается сама, без устаревшего снимка.
+   *
+   * При прерывании (`shouldStop`) набор ЧАСТИЧНЫЙ и это нормально: пометить
+   * то, что уже успели узнать, честнее, чем выбросить результат работы.
+   * Полностью набор живёт до блокировки базы, вместе с расшифрованными
+   * данными, и чистится там же.
+   */
+  breachedValues: Set<string>;
 };
 
 /**
@@ -133,7 +144,7 @@ export async function checkPasswordsBreached(
   } = {},
 ): Promise<BreachCheckSummary> {
   const { onProgress, shouldStop, delayMs = BREACH_REQUEST_DELAY_MS } = options;
-  let breachedCount = 0;
+  const breachedValues = new Set<string>();
   let checkedCount = 0;
 
   for (const password of uniquePasswords) {
@@ -142,10 +153,10 @@ export async function checkPasswordsBreached(
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
     const count = await checkPasswordBreached(password);
-    if (count > 0) breachedCount++;
+    if (count > 0) breachedValues.add(password);
     checkedCount++;
     onProgress?.({ done: checkedCount, total: uniquePasswords.length });
   }
 
-  return { breachedCount, checkedCount };
+  return { breachedCount: breachedValues.size, checkedCount, breachedValues };
 }

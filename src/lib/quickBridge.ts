@@ -119,7 +119,7 @@ export interface QuickCopiedPayload {
 export interface QuickStateResultPayload {
   locked: boolean;
   /** Есть ли вообще настроенный PIN - без него маленькому окну предложить
-   * разблокировку нечем (см. `NO_PIN_MESSAGE` в `QuickAccess.tsx`). */
+   * разблокировку нечем (см. `NO_PIN_MESSAGE` в `quickSearch.ts`). */
   hasPin: boolean;
   /** Осталось мс временной блокировки после исчерпанных попыток, если она
    * сейчас действует. Считается на стороне основного окна по `vault.settings.json`,

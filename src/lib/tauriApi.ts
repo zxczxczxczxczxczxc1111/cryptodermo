@@ -101,19 +101,3 @@ export async function rotateBackups(dir: string, keepN: number): Promise<void> {
 export async function exeDir(): Promise<string> {
   return invoke<string>("exe_dir");
 }
-
-/**
- * Запущено ли приложение в режиме быстрого доступа (ярлык с `--quick`).
- *
- * Аргументы командной строки в webview не попадают, поэтому их читает
- * Rust-команда. Ошибку не пробрасываем наверх: неизвестный режим должен
- * означать обычный запуск, а не белый экран.
- */
-export async function quickMode(): Promise<boolean> {
-  try {
-    return await invoke<boolean>("quick_mode");
-  } catch (err) {
-    console.error("tauriApi: не удалось определить режим запуска", err);
-    return false;
-  }
-}

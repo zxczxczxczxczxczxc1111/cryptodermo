@@ -18,7 +18,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { VaultStore } from "../lib/vaultStore";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { parseOtpauth, totpCode } from "../lib/totp";
-import { totpField, MAX_RESULTS } from "../screens/QuickAccess";
+import { totpField, MAX_RESULTS } from "../lib/quickSearch";
 import { buildQuickRows, type QuickResult } from "../lib/quickBridge";
 import { useModalFocus } from "../hooks/useModalFocus";
 import { UserIcon, KeyIcon, ClockIcon, CheckIcon } from "./icons";

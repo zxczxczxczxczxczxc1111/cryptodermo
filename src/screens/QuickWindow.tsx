@@ -1,8 +1,8 @@
 /**
  * Маленькое окно, которое появляется по глобальному сочетанию клавиш.
  *
- * Отличается от `QuickAccess.tsx` тем, что основное приложение УЖЕ ЗАПУЩЕНО -
- * это то же самое окно/процесс, что и главное окно, просто спрятанное или
+ * Основное приложение при этом УЖЕ ЗАПУЩЕНО - это то же самое окно/процесс,
+ * что и главное окно, просто спрятанное или
  * показанное. Данных у самого этого окна нет никогда: оно спрашивает у
  * основного окна названия и просит его же скопировать значение - см.
  * `lib/quickBridge.ts`, там объяснено почему.
@@ -39,7 +39,7 @@ import {
   PIN_SILENT_ATTEMPT_DELAY_MS,
   formatPinLockoutMessage,
 } from "./LockScreen";
-import { NO_PIN_MESSAGE } from "./QuickAccess";
+import { NO_PIN_MESSAGE } from "../lib/quickSearch";
 import { PIN_MAX_LENGTH } from "../lib/pinLock";
 import { UserIcon, KeyIcon, ClockIcon, CheckIcon } from "../components/icons";
 import "../tokens.css";
@@ -296,7 +296,7 @@ export function QuickWindow() {
     return () => window.removeEventListener("focus", onFocus);
   }, [touch, refresh]);
 
-  /** Фокус в нужное поле при смене фазы - то же самое, что делает QuickAccess.tsx. */
+  /** Фокус в нужное поле при смене фазы. */
   useEffect(() => {
     if (phase.kind === "pin") pinInputRef.current?.focus();
     if (phase.kind === "search") inputRef.current?.focus();

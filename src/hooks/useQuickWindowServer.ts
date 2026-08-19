@@ -13,7 +13,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import type { VaultStore } from "../lib/vaultStore";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { parseOtpauth, totpCode } from "../lib/totp";
-import { totpField, MAX_RESULTS } from "../screens/QuickAccess";
+import { totpField, MAX_RESULTS } from "../lib/quickSearch";
 import {
   QUICK_EVENTS,
   COPY_LABELS,

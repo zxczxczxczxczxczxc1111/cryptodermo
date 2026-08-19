@@ -23,7 +23,7 @@ import {
   pinLockoutRemainingMs,
 } from "../screens/LockScreen";
 import { isPinLockedOut, recordFailedPinAttempt, resetPinLockout } from "../lib/pinLock";
-import { NO_PIN_MESSAGE } from "../screens/QuickAccess";
+import { NO_PIN_MESSAGE } from "../lib/quickSearch";
 import {
   QUICK_EVENTS,
   type QuickStateResultPayload,

@@ -1,6 +1,5 @@
 use tauri::{
     menu::{Menu, MenuItem},
-    Emitter,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager,
 };
@@ -74,15 +73,13 @@ pub fn run() {
         //
         // Без него каждый запуск ярлыка плодил новый процесс, и в панели задач
         // накапливались одинаковые значки (замечено пользователем 17.08.2026).
-        // Теперь второй запуск не создаёт процесс, а передаёт свои аргументы
-        // первому: ярлык быстрого доступа поднимает маленькое окно, обычный -
-        // основное.
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            if argv.iter().any(|arg| arg == "--quick") {
-                let _ = app.emit("single-instance:quick", ());
-            } else {
-                show_main_window(app);
-            }
+        // Теперь второй запуск не создаёт процесс, а поднимает окно первого.
+        //
+        // До 19.08.2026 здесь была развилка по флагу `--quick` (ярлык быстрого
+        // доступа поднимал маленькое окно). Режим удалён: значок в трее и
+        // глобальное сочетание закрывают ту же задачу.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            show_main_window(app);
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -106,7 +103,6 @@ pub fn run() {
             vault_fs::list_backups,
             vault_fs::rotate_backups,
             vault_fs::exe_dir,
-            vault_fs::quick_mode,
         ])
         .setup(|app| {
             build_tray(app.handle())?;

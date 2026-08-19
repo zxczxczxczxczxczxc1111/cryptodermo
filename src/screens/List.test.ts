@@ -5,6 +5,7 @@ import {
   scrollTopToReveal,
   quickCopyField,
   shouldHijackCopy,
+  toggleTagFilter,
   LIST_PAGE_JUMP,
 } from "./List";
 
@@ -150,5 +151,19 @@ describe("shouldHijackCopy", () => {
   it("НЕ перехватывает, когда человек выделил текст", () => {
     // Подменить буфер паролем в этот момент значит украсть чужое действие.
     expect(shouldHijackCopy("выделенный текст")).toBe(false);
+  });
+});
+
+describe("toggleTagFilter", () => {
+  it("клик по тегу без активного фильтра включает его", () => {
+    expect(toggleTagFilter(null, "работа")).toBe("работа");
+  });
+
+  it("повторный клик по уже активному тегу снимает фильтр", () => {
+    expect(toggleTagFilter("работа", "работа")).toBeNull();
+  });
+
+  it("клик по другому тегу заменяет активный фильтр, не снимает его", () => {
+    expect(toggleTagFilter("работа", "личное")).toBe("личное");
   });
 });

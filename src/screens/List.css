@@ -110,6 +110,72 @@
   outline-offset: var(--focus-ring-offset);
 }
 
+/* Индикатор активного фильтра по тегу - тот же вид пилюли, что уже есть у
+   тегов в карточке записи (`record-card__tag`), плюс кнопка снять фильтр. */
+.list__tag-filter {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 var(--sp-4) var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  width: fit-content;
+  border-radius: var(--r-chip);
+  background: var(--surface-hover);
+  border: var(--border-w) solid var(--border);
+}
+
+.list__tag-filter-text {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}
+
+.list__tag-filter-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.list__tag-filter-clear:hover {
+  color: var(--text);
+}
+
+.list__tag-filter-clear:focus-visible {
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Тег внутри строки списка - компактная строка, не пилюля (в отличие от
+   карточки записи): фиксированная высота строки и несколько тегов подряд не
+   оставляют места под рамки. Кликабельность обозначена только подчёркиванием
+   по наведению, без смены фона - список из пятнадцати строк с подсветкой
+   на каждом теге читался бы шумно. */
+.list__row-tag {
+  cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color var(--transition-fast), color var(--transition-fast);
+}
+
+.list__row-tag:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
+.list__row-tag--active {
+  color: var(--text-strong);
+  text-decoration-color: currentColor;
+}
+
 .list__count {
   flex: none;
   margin: 0;

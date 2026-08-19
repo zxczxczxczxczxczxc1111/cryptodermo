@@ -271,6 +271,17 @@ export function shouldHijackCopy(selectionText: string | null | undefined): bool
   return !selectionText || selectionText.length === 0;
 }
 
+/**
+ * Клик по тегу в строке списка (19.08.2026) - тег становится фильтром списка,
+ * повторный клик по уже активному тегу снимает его. Тот же принцип, что у
+ * фильтра-переключателя в остальном приложении: одно и то же действие и
+ * включает, и выключает, отдельной кнопки «сбросить» для этого не нужно (она
+ * всё равно есть отдельно, у самого индикатора активного фильтра).
+ */
+export function toggleTagFilter(current: string | null, clicked: string): string | null {
+  return current === clicked ? null : clicked;
+}
+
 export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged, refreshToken, typeFilter, withAttachments }: ListProps) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -281,6 +292,11 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
   // пропсов сигнализирует об изменениях СНАРУЖИ (тикет 12) - это отдельный,
   // локальный счётчик для изменений, о которых внешний код знать не может.
   const [localVersion, setLocalVersion] = useState(0);
+  // Фильтр по тегу (19.08.2026) - выставляется кликом по тегу в строке
+  // списка (`toggleTagFilter`), полностью локален этому экрану: теги не
+  // часть навигации сайдбара (тикет 12, `Screen`), в отличие от
+  // `typeFilter`/`withAttachments`, которые приходят пропсами.
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -300,8 +316,9 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
     let items = searched.items;
     if (typeFilter) items = items.filter((i) => i.type === typeFilter);
     if (withAttachments) items = items.filter((i) => i.attachments.length > 0);
+    if (tagFilter) items = items.filter((i) => i.tags.includes(tagFilter));
     return items === searched.items ? searched : { items, error: searched.error };
-  }, [searched, typeFilter, withAttachments]);
+  }, [searched, typeFilter, withAttachments, tagFilter]);
 
   const items = filtered.items;
 
@@ -310,11 +327,20 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
       ? "Выберите запись слева, чтобы посмотреть детали."
       : query.trim() !== ""
         ? "По этому запросу ничего нет."
-        : withAttachments
-          ? "Записей с вложениями пока нет."
-          : typeFilter
-            ? "Записей этого типа пока нет."
-          : "Здесь появится содержимое выбранной записи.";
+        : tagFilter
+          ? "Записей с этим тегом пока нет."
+          : withAttachments
+            ? "Записей с вложениями пока нет."
+            : typeFilter
+              ? "Записей этого типа пока нет."
+            : "Здесь появится содержимое выбранной записи.";
+
+  // Смена раздела сайдбара (тип/вложения) - тег из другого раздела мог бы
+  // молча дать пустой список без объяснимой причины, поэтому фильтр по тегу
+  // сбрасывается вместе со сменой раздела, а не переживает её.
+  useEffect(() => {
+    setTagFilter(null);
+  }, [typeFilter, withAttachments]);
 
   /*
    * Автовыбор первой записи.
@@ -347,7 +373,7 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
   useEffect(() => {
     setScrollTop(0);
     if (viewportRef.current) viewportRef.current.scrollTop = 0;
-  }, [query, typeFilter, withAttachments]);
+  }, [query, typeFilter, withAttachments, tagFilter]);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -570,6 +596,21 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
           )}
         </div>
 
+        {tagFilter && (
+          <div className="list__tag-filter">
+            <span className="list__tag-filter-text">Тег: {tagFilter}</span>
+            <button
+              type="button"
+              className="list__tag-filter-clear"
+              onClick={() => setTagFilter(null)}
+              aria-label="Убрать фильтр по тегу"
+              title="Убрать фильтр по тегу"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {error ? (
           <p className="list__error" role="alert">
             {error}
@@ -621,7 +662,35 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
                         </span>
                         <span className="list__row-meta">
                           {TYPE_LABELS[item.type]} · {formatRelativeTime(item.updatedAt, now)}
-                          {item.tags.length > 0 ? ` · ${item.tags.join(", ")}` : ""}
+                          {/* Каждый тег - отдельная цель клика (фильтр списка
+                              по этому тегу), а не просто текст. `<span
+                              role="button">`, не настоящая кнопка - строка
+                              сама уже `<button>`, а вложенная кнопка в кнопку
+                              запрещена разметкой (тот же приём, что у
+                              `list__row-copy` ниже). `stopPropagation`
+                              обязателен - иначе клик заодно выбирал бы
+                              строку. */}
+                          {item.tags.length > 0 && (
+                            <>
+                              {" · "}
+                              {item.tags.map((tag, tagIndex) => (
+                                <span key={tag}>
+                                  <span
+                                    role="button"
+                                    tabIndex={-1}
+                                    className={`list__row-tag${tagFilter === tag ? " list__row-tag--active" : ""}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTagFilter((current) => toggleTagFilter(current, tag));
+                                    }}
+                                  >
+                                    {tag}
+                                  </span>
+                                  {tagIndex < item.tags.length - 1 ? ", " : ""}
+                                </span>
+                              ))}
+                            </>
+                          )}
                         </span>
                         {/*
                           Копирование прямо со строки. Раньше путь был в четыре

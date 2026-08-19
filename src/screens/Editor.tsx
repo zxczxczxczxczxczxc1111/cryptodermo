@@ -12,6 +12,7 @@ import {
   type VaultStore,
 } from "../lib/vaultStore";
 import { TOTP_FIELD_NAME, looksLikeTotp, normalizeTotpInput } from "../lib/totp";
+import { estimatePasswordStrength } from "../lib/passwordStrength";
 import { readVault, writeVaultAtomic } from "../lib/tauriApi";
 import { PasswordGenerator } from "../components/PasswordGenerator";
 import { previewSupportHint } from "../lib/attachmentPreview";
@@ -538,6 +539,16 @@ export function isTotpRow(row: { name: string; value: string }): boolean {
 export function totpRowState(row: { name: string; value: string }): "empty" | "ok" | "bad" {
   if (row.value.trim() === "") return "empty";
   return normalizeTotpInput(row.value, "x") ? "ok" : "bad";
+}
+
+/** Строка поля, для которой редактор показывает индикатор силы пароля
+ * (тикет 11) - секретное поле с именем "Пароль" (тот же текст, что заводит
+ * кнопка "Добавить аккаунт", см. `ACCOUNT_PASSWORD_FIELD` выше). Сверка без
+ * учёта регистра - тем же приёмом, что `isCredentialField` выше. Не любое
+ * секретное поле подряд: CVC/ключ - тоже `secret`, но оценка "силы" для них
+ * бессмысленна. */
+export function isPasswordField(row: { name: string; secret: boolean }): boolean {
+  return row.secret && row.name.trim().toLowerCase() === ACCOUNT_PASSWORD_FIELD.toLowerCase();
 }
 
 export function removeFieldRow(fields: FieldRow[], key: string): FieldRow[] {
@@ -1254,6 +1265,18 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
                         : "Не похоже на ключ двухфакторки. Нужна строка из букв и цифр 2-7 (обычно 16-32 символа) или ссылка otpauth://."}
                   </p>
                 )}
+                {isPasswordField(row) && row.value !== "" && (() => {
+                  const strength = estimatePasswordStrength(row.value);
+                  return (
+                    <div className="editor__strength" aria-live="polite">
+                      <span
+                        className={`editor__strength-bar editor__strength-bar--${strength.level}`}
+                        role="presentation"
+                      />
+                      <span className="editor__strength-label">{strength.label}</span>
+                    </div>
+                  );
+                })()}
               </div>
                 ))}
               </div>

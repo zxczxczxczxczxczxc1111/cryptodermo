@@ -424,6 +424,66 @@
   color: var(--warn);
 }
 
+/* Индикатор силы пароля (тикет 11) - растягивается на всю ширину строки
+   поля тем же приёмом, что .editor__field-row .editor__totp-hint выше. */
+.editor__strength {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: calc(var(--sp-1) * -1);
+}
+
+.editor__strength-bar {
+  position: relative;
+  flex: none;
+  width: 80px;
+  height: 4px;
+  border-radius: var(--r-chip);
+  background: var(--surface-hover);
+  overflow: hidden;
+}
+
+.editor__strength-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: var(--strength-fill, 25%);
+  background: var(--strength-color, var(--danger));
+  border-radius: inherit;
+  transition: width var(--transition-fast), background var(--transition-fast);
+}
+
+/* Цвет только у weak/fair (--danger/--warn - те же два исключения из
+   монохрома, что и везде в проекте, см. шапку tokens.css). good/strong
+   различаются длиной и подписью, не новым цветом - иначе индикатор завёл бы
+   третий акцентный цвет. */
+.editor__strength-bar--weak {
+  --strength-fill: 25%;
+  --strength-color: var(--danger);
+}
+
+.editor__strength-bar--fair {
+  --strength-fill: 50%;
+  --strength-color: var(--warn);
+}
+
+.editor__strength-bar--good {
+  --strength-fill: 75%;
+  --strength-color: var(--text-strong);
+}
+
+.editor__strength-bar--strong {
+  --strength-fill: 100%;
+  --strength-color: var(--text-strong);
+}
+
+.editor__strength-label {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}
+
 /* --- Аккаунты внутри записи --- */
 
 /* Блок аккаунта отделён рамкой и подложкой: иначе три учётки подряд читаются

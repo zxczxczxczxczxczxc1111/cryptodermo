@@ -30,7 +30,11 @@ export type PasswordHealthSummary = {
   reusedCount: number;
 };
 
-function collectPasswordValues(items: readonly Item[]): string[] {
+/** Значения полей «Пароль» по всей базе. Экспортирована, чтобы проверка на
+ * утечки (`breachCheck.ts`) считала ТУ ЖЕ вселенную паролей, что и слабые с
+ * повторяющимися: три числа стоят в одном блоке настроек, и считай они разное,
+ * это заметили бы сразу. */
+export function collectPasswordValues(items: readonly Item[]): string[] {
   const values: string[] = [];
   for (const item of items) {
     for (const field of item.fields) {

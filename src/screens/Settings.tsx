@@ -50,6 +50,8 @@ import {
   RELEASES_PAGE_URL,
 } from "../lib/updateCheck";
 import { openExternal } from "../lib/openExternal";
+import { checkPasswordsBreached, BreachCheckError, BREACH_NETWORK_FAILED_MESSAGE } from "../lib/breachCheck";
+import { collectPasswordValues } from "../lib/passwordHealth";
 import "../tokens.css";
 import "./Settings.css";
 
@@ -387,6 +389,23 @@ export function Settings({
 
   // --- обновления ---
   const [updateEnabled, setUpdateEnabled] = useState(false);
+
+  /**
+   * Проверка на утечки. Отдельное состояние, а не число в `storageState`
+   * рядом со слабыми и повторяющимися: те считаются мгновенно и синхронно,
+   * а эта ходит в сеть по кнопке и живёт четырьмя состояниями (не
+   * проверяли / идёт / готово / отказ).
+   */
+  const [breachEnabled, setBreachEnabled] = useState(false);
+  const [breachState, setBreachState] = useState<
+    | { kind: "idle" }
+    | { kind: "running"; done: number; total: number }
+    | { kind: "done"; breached: number; checked: number }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+  /** Проверка прерывается, если база успела заблокироваться: иначе цикл
+   * продолжал бы держать значения паролей в памяти после блокировки. */
+  const breachAbortRef = useRef(false);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateResult, setUpdateResult] = useState<
     { kind: "none" } | { kind: "found"; version: string; url: string } | { kind: "error"; message: string } | null
@@ -414,6 +433,7 @@ export function Settings({
       setAutoLockMinutes(msToMinutes(settings.autoLockTimeoutMs));
       setPinConfigured(Boolean(settings.pin));
       setUpdateEnabled(settings.updateCheckEnabled === true);
+      setBreachEnabled(settings.breachCheckEnabled === true);
       setHotkey(settings.hotkey ?? DEFAULT_HOTKEY);
       setHotkeyEnabled(settings.hotkeyEnabled === true);
       setCloseToTray(settings.closeToTray === true);
@@ -517,6 +537,60 @@ export function Settings({
     } catch (err) {
       console.error("Settings: не удалось сохранить настройку проверки обновлений", err);
       setUpdateEnabled(!next);
+    }
+  }
+
+  /**
+   * Прервать проверку, если экран уходит. Автоблокировка размонтирует всё
+   * разблокированное дерево вместе с этим экраном, и цикл обязан
+   * остановиться: иначе он продолжал бы держать значения паролей в памяти
+   * уже после того, как база считается закрытой.
+   */
+  useEffect(() => {
+    return () => {
+      breachAbortRef.current = true;
+    };
+  }, []);
+
+  async function handleToggleBreachCheck(next: boolean) {
+    setBreachEnabled(next);
+    if (!next) setBreachState({ kind: "idle" });
+    try {
+      await updateSettings(vaultPath, { breachCheckEnabled: next });
+    } catch (err) {
+      console.error("Settings: не удалось сохранить настройку проверки утечек", err);
+      setBreachEnabled(!next);
+    }
+  }
+
+  /**
+   * Запуск проверки. Уникальные пароли собираются ЗДЕСЬ, а не внутри
+   * `breachCheck.ts`: один и тот же пароль в пяти записях должен стоить
+   * одного запроса, а не пяти. Область та же, что у слабых и повторяющихся
+   * (`collectPasswordValues`), иначе три числа в одном блоке считали бы
+   * разное.
+   */
+  async function runBreachCheck() {
+    if (breachState.kind === "running") return;
+    breachAbortRef.current = false;
+    const unique = [...new Set(collectPasswordValues(store.search("")))];
+    if (unique.length === 0) {
+      setBreachState({ kind: "done", breached: 0, checked: 0 });
+      return;
+    }
+    setBreachState({ kind: "running", done: 0, total: unique.length });
+    try {
+      const result = await checkPasswordsBreached(unique, {
+        onProgress: (p) => setBreachState({ kind: "running", done: p.done, total: p.total }),
+        shouldStop: () => breachAbortRef.current,
+      });
+      setBreachState({ kind: "done", breached: result.breachedCount, checked: result.checkedCount });
+    } catch (err) {
+      console.error("Settings: проверка на утечки не удалась", err);
+      setBreachState({
+        kind: "error",
+        message: err instanceof BreachCheckError ? err.message : BREACH_NETWORK_FAILED_MESSAGE,
+      });
     }
   }
 
@@ -1042,6 +1116,59 @@ export function Settings({
                 <dd>{storageState.reusedPasswordsCount}</dd>
               </div>
             </dl>
+
+            {/*
+              Проверка на утечки стоит здесь же, третьей к слабым и
+              повторяющимся - это тот же вопрос «что не так с моими паролями».
+              Но она НЕ число в списке выше: те считаются мгновенно и на месте,
+              а эта ходит в сеть, идёт секундами и может отказать, поэтому у
+              неё своя кнопка и свои состояния.
+            */}
+            <div className="settings__breach">
+              <label className="settings__checkbox">
+                <input
+                  type="checkbox"
+                  checked={breachEnabled}
+                  onChange={(e) => void handleToggleBreachCheck(e.currentTarget.checked)}
+                />
+                Разрешить проверку паролей на утечки
+              </label>
+              <p className="settings__hint">
+                Второе и последнее место, где приложение выходит в сеть. Наружу уходят только
+                первые пять символов контрольной суммы пароля - ни пароль, ни его полная сумма
+                машину не покидают, сверка идёт здесь. Запросов будет столько, сколько у вас
+                разных паролей.{" "}
+                <button type="button" className="settings__link-btn" onClick={() => setDetails("updates")}>
+                  Что уходит в сеть
+                </button>
+              </p>
+              <div className="settings__row">
+                <button
+                  type="button"
+                  className="settings__submit"
+                  onClick={() => void runBreachCheck()}
+                  disabled={!breachEnabled || breachState.kind === "running"}
+                >
+                  {breachState.kind === "running" ? "Проверяю..." : "Проверить пароли"}
+                </button>
+                <span className="settings__status" aria-live="polite">
+                  {breachState.kind === "running"
+                    ? `Проверено ${breachState.done} из ${breachState.total}`
+                    : breachState.kind === "done"
+                      ? breachState.checked === 0
+                        ? "Проверять нечего: паролей в базе нет"
+                        : breachState.breached === 0
+                          ? `Ни один из ${breachState.checked} паролей в утечках не найден`
+                          : `Найдено в утечках: ${breachState.breached} из ${breachState.checked}`
+                      : ""}
+                </span>
+              </div>
+              {breachState.kind === "error" && (
+                <p className="settings__error" role="alert">
+                  {breachState.message}
+                </p>
+              )}
+            </div>
           </section>
         )}
         </div>
@@ -1082,8 +1209,18 @@ export function Settings({
               <>
                 <h2 id="settings-details-title">Что уходит в сеть</h2>
                 <p>
-                  Всё остальное в программе работает без интернета. Проверка обновлений -
-                  единственное исключение, и по умолчанию она выключена.
+                  В сеть программа выходит ровно в двух местах, и оба выключены по
+                  умолчанию: проверка обновлений и проверка паролей на утечки. Всё
+                  остальное работает без интернета.
+                </p>
+                <p>
+                  <b>Проверка паролей на утечки.</b> Запускается только кнопкой, сама
+                  никогда. Наружу уходят первые пять символов контрольной суммы пароля
+                  (SHA-1) - по ним сервис отдаёт сотни чужих сумм с таким же началом, и
+                  сверка идёт уже на вашей машине. Ни пароль, ни его полная сумма машину
+                  не покидают. Что при этом всё-таки видно со стороны: сколько у вас
+                  разных паролей (столько будет запросов) и сам факт обращения к сервису
+                  проверки.
                 </p>
                 <p>
                   Если включить, приложение раз в сутки спрашивает у GitHub номер

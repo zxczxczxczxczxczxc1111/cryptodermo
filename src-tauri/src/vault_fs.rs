@@ -13,15 +13,18 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Единая ошибка файлового слоя. У нас пока только один источник ошибок -
-/// операции с файловой системой (`std::io::Error`), поэтому вариант ровно
-/// один. `#[from]` даёт бесплатное преобразование `std::io::Error` в
-/// `VaultFsError` через оператор `?` (см. функции ниже - нигде не нужно
-/// вручную оборачивать ошибку, Rust делает это сам).
+/// Единая ошибка файлового слоя. Файловые операции (`std::io::Error`)
+/// преобразуются в `VaultFsError` бесплатно через `#[from]` и оператор `?`
+/// (см. функции ниже). Второй вариант - `write_vault_atomic` получает байты
+/// базы как base64-строку (см. её комментарий), и эта строка может оказаться
+/// битой (не от пользователя - от самого приложения, но лучше явная ошибка,
+/// чем незаметно испорченные данные, см. R07).
 #[derive(Debug, thiserror::Error)]
 pub enum VaultFsError {
     #[error("{0}")]
     Io(#[from] std::io::Error),
+    #[error("invalid base64 in write_vault_atomic bytes argument: {0}")]
+    InvalidBase64(String),
 }
 
 // Tauri по умолчанию не умеет отдавать `std::io::Error` в JS как читаемый
@@ -56,6 +59,88 @@ pub struct BackupInfo {
     pub size: u64,
     /// Время последнего изменения файла, миллисекунды от Unix-эпохи (UTC).
     pub modified_at_ms: u64,
+}
+
+/// Значение одного символа стандартного алфавита base64 (RFC 4648 §4, тот
+/// же, что уже используют `btoa`/`atob` на стороне JS в `vaultFormat.ts` и
+/// других модулях - не URL-safe вариант). `None` - символ не из алфавита (и
+/// не паддинг `=`, тот обрабатывается отдельно в `base64_decode`).
+fn base64_char_value(c: u8) -> Option<u8> {
+    match c {
+        b'A'..=b'Z' => Some(c - b'A'),
+        b'a'..=b'z' => Some(c - b'a' + 26),
+        b'0'..=b'9' => Some(c - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    }
+}
+
+/// Декодировать base64-строку в байты. Ручная реализация вместо Cargo-крейта
+/// (R31 - новая зависимость отдельным вопросом пользователю) - тот же
+/// принцип, что уже применён к `aes_gcm.py`: стандартный, опубликованный
+/// алгоритм (RFC 4648), реализованный дословно, не изобретённая своя схема.
+///
+/// `write_vault_atomic` получает от JS байты базы этой строкой (см. её
+/// комментарий и комментарий в `tauriApi.ts`) - альтернатива JSON-массиву из
+/// потенциально миллионов отдельных чисел.
+fn base64_decode(input: &str) -> Result<Vec<u8>, VaultFsError> {
+    let bytes = input.as_bytes();
+    if bytes.len() % 4 != 0 {
+        return Err(VaultFsError::InvalidBase64(format!(
+            "length {} is not a multiple of 4",
+            bytes.len()
+        )));
+    }
+
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
+    for (chunk_index, chunk) in bytes.chunks(4).enumerate() {
+        // '=' допустим только в последних одной-двух позициях последней
+        // четвёрки символов - как и требует RFC 4648. Проверяем позицию
+        // паддинга явно, а не просто считаем количество `=`, чтобы битая
+        // строка вида "A=AA" не декодировалась молча во что-то произвольное.
+        let is_last_chunk = chunk_index == bytes.len() / 4 - 1;
+        let mut values = [0u8; 4];
+        let mut pad_count = 0u8;
+        // Как только внутри четвёрки встретился паддинг, все оставшиеся
+        // символы этой же четвёрки обязаны быть паддингом тоже - строка вида
+        // "AB=A" (данные ПОСЛЕ паддинга) невалидна, а не тихо декодируется.
+        let mut seen_pad = false;
+        for (i, &b) in chunk.iter().enumerate() {
+            if b == b'=' {
+                if !is_last_chunk || i < 2 {
+                    return Err(VaultFsError::InvalidBase64(
+                        "'=' padding only allowed at the end of the last group, after at least 2 data characters".to_string(),
+                    ));
+                }
+                seen_pad = true;
+                pad_count += 1;
+                values[i] = 0;
+            } else if seen_pad {
+                return Err(VaultFsError::InvalidBase64(
+                    "data character found after '=' padding".to_string(),
+                ));
+            } else {
+                values[i] = base64_char_value(b).ok_or_else(|| {
+                    VaultFsError::InvalidBase64(format!("unexpected character {:?}", b as char))
+                })?;
+            }
+        }
+
+        let n = (values[0] as u32) << 18
+            | (values[1] as u32) << 12
+            | (values[2] as u32) << 6
+            | (values[3] as u32);
+        out.push((n >> 16) as u8);
+        if pad_count < 2 {
+            out.push((n >> 8) as u8);
+        }
+        if pad_count < 1 {
+            out.push(n as u8);
+        }
+    }
+
+    Ok(out)
 }
 
 /// Путь к временному файлу для атомарной записи: `<целевой файл>.tmp`.
@@ -106,10 +191,16 @@ fn write_temp_and_sync(target_path: &Path, bytes: &[u8]) -> Result<PathBuf, Vaul
 /// Команда: прочитать базу целиком как сырые байты. Расшифровкой и разбором
 /// JSON занимается TypeScript (`vault-format`, `crypto`) - Rust просто читает
 /// файл с диска, ему не нужно (и не должно) знать про формат содержимого.
+///
+/// Возвращает `tauri::ipc::Response` - настоящий бинарный ответ IPC вместо
+/// обычной сериализации `Vec<u8>` в JSON-массив чисел (19.08.2026, найдено
+/// внешним ревью: на базе, раздутой вложениями, это были бы миллионы
+/// отдельных чисел в тексте). На стороне JS `invoke()` в этом случае
+/// резолвится `ArrayBuffer` - см. `readVault` в `tauriApi.ts`.
 #[tauri::command]
-pub fn read_vault(path: String) -> Result<Vec<u8>, VaultFsError> {
+pub fn read_vault(path: String) -> Result<tauri::ipc::Response, VaultFsError> {
     let bytes = std::fs::read(&path)?;
-    Ok(bytes)
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// Команда: атомарно записать байты в целевой файл.
@@ -131,8 +222,16 @@ pub fn read_vault(path: String) -> Result<Vec<u8>, VaultFsError> {
 /// - если переименование уже случилось - на диске уже новая версия целиком.
 /// Смешанного, "наполовину записанного" состояния целевого файла быть не
 /// может. Это же свойство проверяет автотест `write_vault_atomic_*` ниже.
+///
+/// `bytes` приходит base64-строкой, не JSON-массивом чисел (19.08.2026, тот
+/// же повод, что у `read_vault` выше) - декодируется вручную `base64_decode`
+/// перед записью. Подробное обоснование, почему не "сырой" IPC-путь Tauri
+/// (потребовал бы передавать `path` через HTTP-заголовок, а значения
+/// заголовков ограничены ASCII - путь с кириллицей его бы сломал), - в
+/// комментарии `writeVaultAtomic` в `tauriApi.ts`.
 #[tauri::command]
-pub fn write_vault_atomic(path: String, bytes: Vec<u8>) -> Result<(), VaultFsError> {
+pub fn write_vault_atomic(path: String, bytes: String) -> Result<(), VaultFsError> {
+    let bytes = base64_decode(&bytes)?;
     let target_path = Path::new(&path);
     let tmp_path = write_temp_and_sync(target_path, &bytes)?;
     std::fs::rename(&tmp_path, target_path)?;
@@ -299,6 +398,60 @@ mod tests {
         dir
     }
 
+    /// Тот же алфавит, что и у `base64_char_value` в продакшен-коде выше -
+    /// нужен здесь отдельной константой, потому что кодировщик (в отличие от
+    /// декодера) есть только у тестов, см. `base64_encode` ниже.
+    const BASE64_ALPHABET: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    /// Кодировщик base64, нужен только тестам - `write_vault_atomic` теперь
+    /// принимает байты этой строкой (см. её комментарий), а не `Vec<u8>`
+    /// напрямую, и тестам нужно как-то её получить. Продакшен-коду кодировщик
+    /// не нужен: JS-сторона кодирует сама (`bytesToBase64` в `tauriApi.ts`),
+    /// Rust только декодирует.
+    fn base64_encode(input: &[u8]) -> String {
+        let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+        for chunk in input.chunks(3) {
+            let b0 = chunk[0] as u32;
+            let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+            let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+            let n = (b0 << 16) | (b1 << 8) | b2;
+            out.push(BASE64_ALPHABET[((n >> 18) & 0x3F) as usize] as char);
+            out.push(BASE64_ALPHABET[((n >> 12) & 0x3F) as usize] as char);
+            out.push(if chunk.len() > 1 {
+                BASE64_ALPHABET[((n >> 6) & 0x3F) as usize] as char
+            } else {
+                '='
+            });
+            out.push(if chunk.len() > 2 {
+                BASE64_ALPHABET[(n & 0x3F) as usize] as char
+            } else {
+                '='
+            });
+        }
+        out
+    }
+
+    #[test]
+    fn base64_roundtrip_matches_original_bytes_for_various_lengths() {
+        // 0, 1, 2, 3 байта - три случая паддинга (0/2/1 знаков `=`) плюс
+        // пустая строка, и один случай побольше без паддинга вовсе.
+        for len in [0usize, 1, 2, 3, 4, 5, 6, 300] {
+            let input: Vec<u8> = (0..len as u32).map(|i| (i % 256) as u8).collect();
+            let encoded = base64_encode(&input);
+            let decoded = base64_decode(&encoded).expect("валидная base64-строка должна декодироваться");
+            assert_eq!(decoded, input, "round-trip разошёлся для длины {len}");
+        }
+    }
+
+    #[test]
+    fn base64_decode_rejects_malformed_input() {
+        assert!(base64_decode("A").is_err(), "длина не кратна 4");
+        assert!(base64_decode("AB=A").is_err(), "данные после паддинга внутри группы");
+        assert!(base64_decode("A=AA").is_err(), "паддинг не на последних позициях группы");
+        assert!(base64_decode("AAA!").is_err(), "символ не из алфавита base64");
+    }
+
     /// Главный автотест этого модуля: атомарная запись не оставляет "битую
     /// половину" файла, что бы ни случилось между записью tmp-файла и
     /// переименованием.
@@ -338,8 +491,9 @@ mod tests {
         );
 
         // Теперь выполняем ту же операцию целиком через публичную команду -
-        // без прерывания.
-        write_vault_atomic(target.to_string_lossy().into_owned(), new_bytes.clone())
+        // без прерывания. Байты идут base64-строкой - см. комментарий у
+        // `write_vault_atomic`.
+        write_vault_atomic(target.to_string_lossy().into_owned(), base64_encode(&new_bytes))
             .expect("полная атомарная запись должна пройти успешно");
 
         let after_full_write =

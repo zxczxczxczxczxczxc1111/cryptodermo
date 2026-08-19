@@ -10,6 +10,20 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 
+/** Перевести байты в base64 (стандартный алфавит) без Node-специфичного
+ * Buffer - та же маленькая копия, что уже есть в `vaultFormat.ts`,
+ * `vaultStore.ts`, `pinLock.ts` и других модулях (см. CLAUDE.md - "у
+ * каждого модуля своя копия"). Нужна здесь, чтобы `writeVaultAtomic`
+ * передавала байты базы одной компактной строкой, а не массивом из
+ * миллионов отдельных JSON-чисел (см. комментарий у функции). */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
 /** Один файл резервной копии - зеркало `BackupInfo` из `src-tauri/src/vault_fs.rs`. */
 export type BackupInfo = {
   /** Полный путь к файлу бэкапа. */
@@ -27,16 +41,37 @@ export type BackupInfo = {
  * целиком как сырые байты. Расшифровка и разбор JSON - не забота этой
  * функции и не забота Rust-команды за ней, этим занимается `vault-format` и
  * `crypto` уровнем выше.
+ *
+ * Rust-команда отдаёт байты через `tauri::ipc::Response` - настоящий
+ * бинарный ответ IPC, а не JSON-массив чисел (19.08.2026, найдено внешним
+ * ревью: старый путь через обычный `Vec<u8>` сериализовался в JSON-массив,
+ * на большой базе с вложениями это миллионы отдельных чисел в тексте).
+ * `invoke()` в этом случае резолвится настоящим `ArrayBuffer` - это
+ * поведение самого Tauri v2 (content-type ответа не `application/json`,
+ * фронтовый рантайм Tauri берёт `response.arrayBuffer()`), а не что-то,
+ * что реализует этот модуль.
  */
 export async function readVault(path: string): Promise<Uint8Array> {
-  const bytes = await invoke<number[]>("read_vault", { path });
-  return new Uint8Array(bytes);
+  const buffer = await invoke<ArrayBuffer>("read_vault", { path });
+  return new Uint8Array(buffer);
 }
 
 /**
  * Атомарно записать байты в файл: временный файл + fsync + переименование
  * поверх боевого. Прямой записи в `path` не существует ни на одном шаге -
  * см. комментарии в `write_vault_atomic` в Rust-коде.
+ *
+ * Байты уходят как base64-строка, а не JSON-массив чисел (19.08.2026, тот же
+ * повод, что у `readVault` выше). Настоящий "сырой" путь IPC Tauri (payload
+ * ArrayBuffer/Uint8Array целиком, без обёртки `{path, bytes}`) потребовал бы
+ * передавать `path` отдельно через HTTP-заголовок запроса, а значения
+ * заголовков ограничены ASCII - путь к базе с кириллицей в имени пользователя
+ * (обычное дело на этой машине) такой заголовок бы сломал. Base64-строка
+ * этого ограничения не имеет и всё равно вчетверо компактнее текущего
+ * `Array.from(bytes)` (~×1.33 от размера байт вместо ~×4 у JSON-массива
+ * чисел с запятыми). Rust-сторона декодирует её вручную (`base64_decode` в
+ * `vault_fs.rs`) - без новой Cargo-зависимости, тот же принцип, что у
+ * hand-rolled `aes_gcm.py`.
  */
 export async function writeVaultAtomic(
   path: string,
@@ -44,7 +79,7 @@ export async function writeVaultAtomic(
 ): Promise<void> {
   await invoke<void>("write_vault_atomic", {
     path,
-    bytes: Array.from(bytes),
+    bytes: bytesToBase64(bytes),
   });
 }
 

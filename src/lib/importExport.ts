@@ -252,9 +252,9 @@ export class CsvImportError extends Error {
  * в карточке записи (`isOpenableUrl` в `openExternal.ts`) работает по ВИДУ
  * значения, не по имени поля - специального служебного имени заводить не
  * нужно, это просто подпись для человека. */
-const CSV_URL_FIELD_NAME = "Сайт";
-const CSV_LOGIN_FIELD_NAME = "Логин";
-const CSV_PASSWORD_FIELD_NAME = "Пароль";
+export const CSV_URL_FIELD_NAME = "Сайт";
+export const CSV_LOGIN_FIELD_NAME = "Логин";
+export const CSV_PASSWORD_FIELD_NAME = "Пароль";
 
 /**
  * Разобрать текст в строки таблицы (RFC 4180: поля в кавычках могут

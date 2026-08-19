@@ -784,6 +784,7 @@ function App() {
                   store={store}
                   onImportSuccess={handleImportSuccess}
                   onCsvImportSuccess={() => void handleCsvImportSuccess()}
+                  onKdbxImportSuccess={() => void handleCsvImportSuccess()}
                   onError={(message) => console.error("ImportExportPanel:", message)}
                 />
                 {importSaveError && (

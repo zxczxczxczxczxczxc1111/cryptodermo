@@ -14,6 +14,7 @@ import {
   splitCsvImportDuplicates,
 } from "../lib/importExport";
 import { buildKdbxExportFilename, buildKdbxFile } from "../lib/kdbxExport";
+import { parseKdbxFile, KdbxImportError, KDBX_IMPORT_FAILED_MESSAGE } from "../lib/kdbxImport";
 import { PasswordField } from "./PasswordField";
 import "./ImportExportPanel.css";
 
@@ -63,6 +64,13 @@ import "./ImportExportPanel.css";
  *   только показывается в тексте подтверждения. Добавление - обычный цикл
  *   `store.addItem()`, новые `id`/`createdAt` генерируются как при ручном
  *   создании записи, в отличие от «Импорта» выше.
+ * - «Импорт KDBX» (19.08.2026, вечер) - обратная сторона моста: читает файл
+ *   KeePass и ДОБАВЛЯЕТ его записи, как «Импорт CSV» (не заменяет базу, та же
+ *   проверка дублей, то же подтверждение с числами). Как и «Экспорт в KDBX»,
+ *   сначала спрашивает пароль, но ЧУЖОЙ, уже существующий - поэтому без
+ *   подтверждения ввода, и неверный пароль не закрывает модалку, чтобы не
+ *   заставлять заново выбирать файл из-за опечатки. Точного round-trip с
+ *   нашим же экспортом не бывает - почему, разобрано в шапке `kdbxImport.ts`.
  * - «Экспорт в KDBX» (19.08.2026) - зашифрованный файл в формате KeePass 2,
  *   который открывают бесплатные офлайн-клиенты под iOS (KeePassium,
  *   Strongbox) и не только - см. подробный разбор формата, версии и
@@ -105,6 +113,9 @@ export type ImportExportPanelProps = {
    * от `onImportSuccess`, коллекция не заменена, а дополнена, счётчик не
    * может уменьшиться, и вызывающему коду не нужна логика R28. */
   onCsvImportSuccess?: (count: number) => void;
+  /** Импорт KDBX применён (`store.addItem` отработал `count` раз) - тот же
+   * контракт, что у `onCsvImportSuccess`: добавление, не замена. */
+  onKdbxImportSuccess?: (count: number) => void;
   /** Экспорт в KDBX успешно записан по выбранному пользователем пути. Ничего
    * не меняет в `store` (в отличие от импортов выше) - как и обычный
    * «Экспорт», это чтение, не запись в базу. */
@@ -124,11 +135,13 @@ export const REPLACE_LABEL = "Заменить";
 export const CSV_IMPORT_LABEL = "Импорт CSV";
 export const CSV_ADD_LABEL = "Добавить";
 export const KDBX_EXPORT_LABEL = "Экспорт в KDBX";
+export const KDBX_IMPORT_LABEL = "Импорт KDBX";
 export const KDBX_EXPORT_CONFIRM_LABEL = "Экспортировать";
 const CANCEL_LABEL = "Отмена";
 const IMPORT_DONE_LABEL = "Записи заменены";
 const CSV_IMPORT_DONE_LABEL = "Записи добавлены";
 const KDBX_EXPORT_DONE_LABEL = "Экспортировано";
+const KDBX_IMPORT_DONE_LABEL = "Записи добавлены";
 const CSV_IMPORT_NOTHING_TO_ADD_MESSAGE =
   "Все записи файла уже есть в базе (совпали по названию или адресу сайта) - добавлять нечего.";
 /** Заголовок и текст кнопки подтверждения модалки перед экспортом (см.
@@ -171,15 +184,25 @@ export function ImportExportPanel({
   onExportSuccess,
   onImportSuccess,
   onCsvImportSuccess,
+  onKdbxImportSuccess,
   onKdbxExportSuccess,
   onError,
 }: ImportExportPanelProps) {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"copy" | "export" | "import" | "csvImport" | "kdbxExport" | null>(null);
+  const [busy, setBusy] = useState<"copy" | "export" | "import" | "csvImport" | "kdbxExport" | "kdbxImport" | null>(null);
   const [importState, setImportState] = useState<ImportState>({ kind: "idle" });
   const [csvImportState, setCsvImportState] = useState<CsvImportState>({ kind: "idle" });
   const [exportConfirmVisible, setExportConfirmVisible] = useState(false);
+  /** Импорт KDBX: пароль ЧУЖОГО файла. Отдельно от пароля экспорта - это
+   * разные вещи (там мы пароль назначаем, здесь вводим существующий), и
+   * подтверждение ввода здесь не нужно. `wrong` включается после неудачной
+   * попытки: человек чаще всего просто опечатался, и переоткрывать диалог
+   * выбора файла ради этого незачем. */
+  const [kdbxImportPasswordVisible, setKdbxImportPasswordVisible] = useState(false);
+  const [kdbxImportPassword, setKdbxImportPassword] = useState("");
+  const [kdbxImportError, setKdbxImportError] = useState<string | null>(null);
+  const [kdbxImportState, setKdbxImportState] = useState<CsvImportState>({ kind: "idle" });
   const [kdbxPasswordVisible, setKdbxPasswordVisible] = useState(false);
   const [kdbxPassword, setKdbxPassword] = useState("");
   const [kdbxConfirmPassword, setKdbxConfirmPassword] = useState("");
@@ -188,11 +211,18 @@ export function ImportExportPanel({
   const importConfirmRef = useRef<HTMLDivElement>(null);
   const csvImportConfirmRef = useRef<HTMLDivElement>(null);
   const kdbxPasswordRef = useRef<HTMLDivElement>(null);
+  const kdbxImportPasswordRef = useRef<HTMLDivElement>(null);
+  const kdbxImportConfirmRef = useRef<HTMLDivElement>(null);
   useModalFocus(exportConfirmRef, exportConfirmVisible);
   useModalFocus(importConfirmRef, importState.kind === "confirming");
   useModalFocus(csvImportConfirmRef, csvImportState.kind === "confirming");
   useModalFocus(kdbxPasswordRef, kdbxPasswordVisible);
+  useModalFocus(kdbxImportPasswordRef, kdbxImportPasswordVisible);
+  useModalFocus(kdbxImportConfirmRef, kdbxImportState.kind === "confirming");
   const confirmTitleId = useId();
+  const kdbxImportTitleId = useId();
+  const kdbxImportFieldId = useId();
+  const kdbxImportConfirmTitleId = useId();
   const kdbxTitleId = useId();
   const kdbxPasswordFieldId = useId();
   const kdbxConfirmFieldId = useId();
@@ -392,6 +422,97 @@ export function ImportExportPanel({
     onCsvImportSuccess?.(toAdd.length);
   }
 
+  /**
+   * Импорт KDBX. Порядок шагов тот же, что у экспорта (сначала пароль, потом
+   * файл), но пароль здесь ЧУЖОЙ, уже существующий, поэтому подтверждения
+   * ввода нет.
+   *
+   * Дальше всё как у CSV-импорта: разбор, отсев дубликатов по названию и
+   * адресу сайта, подтверждение с числами, добавление через `addItem`.
+   * Заменять базу этот путь не умеет вовсе - см. шапку файла.
+   */
+  function requestKdbxImport() {
+    setErrorMessage(null);
+    setStatusMessage(null);
+    setKdbxImportPassword("");
+    setKdbxImportError(null);
+    setKdbxImportPasswordVisible(true);
+  }
+
+  function cancelKdbxImport() {
+    setKdbxImportPasswordVisible(false);
+    setKdbxImportPassword("");
+    setKdbxImportError(null);
+  }
+
+  async function confirmKdbxImportPassword(e: FormEvent) {
+    e.preventDefault();
+    if (kdbxImportPassword.length === 0) return;
+
+    let path: string | string[] | null;
+    try {
+      path = await open({
+        title: "Импорт KDBX (KeePass)",
+        multiple: false,
+        directory: false,
+        filters: [{ name: "KeePass", extensions: ["kdbx"] }],
+      });
+    } catch (err) {
+      reportError(DIALOG_OPEN_FAILED_MESSAGE, err);
+      return;
+    }
+    if (path === null || Array.isArray(path)) return; // отмена диалога
+
+    setBusy("kdbxImport");
+    try {
+      const bytes = await readVault(path);
+      const candidates = await parseKdbxFile(bytes, kdbxImportPassword);
+      const { toAdd, duplicateCount } = splitCsvImportDuplicates(candidates, store.search(""));
+      // Пароль больше не нужен - убираем из состояния сразу, не дожидаясь
+      // конца всего сценария подтверждения.
+      setKdbxImportPassword("");
+      setKdbxImportPasswordVisible(false);
+      if (toAdd.length === 0) {
+        setStatusMessage(CSV_IMPORT_NOTHING_TO_ADD_MESSAGE);
+        return;
+      }
+      setKdbxImportState({ kind: "confirming", toAdd, duplicateCount });
+    } catch (err) {
+      // Неверный пароль - самый частый исход, и он не должен закрывать
+      // модалку: человек дописывает пароль и пробует снова, не проходя заново
+      // весь путь с выбором файла.
+      if (err instanceof KdbxImportError) {
+        setKdbxImportError(err.message);
+        console.error("ImportExportPanel: не удалось прочитать файл KDBX", err);
+      } else {
+        setKdbxImportPasswordVisible(false);
+        setKdbxImportPassword("");
+        reportError(KDBX_IMPORT_FAILED_MESSAGE, err);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function cancelKdbxImportConfirm() {
+    setKdbxImportState({ kind: "idle" });
+  }
+
+  function confirmKdbxImport() {
+    if (kdbxImportState.kind !== "confirming") return;
+    const { toAdd } = kdbxImportState;
+    try {
+      for (const input of toAdd) store.addItem(input);
+    } catch (err) {
+      reportError(CSV_IMPORT_APPLY_FAILED_MESSAGE, err);
+      return;
+    }
+    setKdbxImportState({ kind: "idle" });
+    setErrorMessage(null);
+    setStatusMessage(KDBX_IMPORT_DONE_LABEL);
+    onKdbxImportSuccess?.(toAdd.length);
+  }
+
   /** Открывает модалку ввода пароля - в отличие от остальных действий,
    * первый шаг «Экспорта в KDBX» не диалог выбора файла, а НОВЫЙ пароль
    * (см. комментарий у пункта в шапке файла). Прошлый ввод сбрасывается на
@@ -533,6 +654,9 @@ export function ImportExportPanel({
         <button type="button" onClick={() => void handleCsvImportPick()} disabled={busy !== null}>
           {CSV_IMPORT_LABEL}
         </button>
+        <button type="button" onClick={requestKdbxImport} disabled={busy !== null}>
+          {KDBX_IMPORT_LABEL}
+        </button>
         <button type="button" onClick={requestKdbxExport} disabled={busy !== null}>
           {KDBX_EXPORT_LABEL}
         </button>
@@ -617,6 +741,81 @@ ref={importConfirmRef}
                 {CSV_ADD_LABEL}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {kdbxImportState.kind === "confirming" && (
+        <div className="import-export-panel__modal-overlay" role="presentation">
+          <div
+            ref={kdbxImportConfirmRef}
+            className="import-export-panel__modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={kdbxImportConfirmTitleId}
+          >
+            <h2 id={kdbxImportConfirmTitleId}>Добавить записи</h2>
+            <p>
+              {buildCsvImportConfirmationMessage(
+                kdbxImportState.toAdd.length,
+                kdbxImportState.duplicateCount,
+              )}
+            </p>
+            <div className="import-export-panel__modal-actions">
+              <button type="button" onClick={cancelKdbxImportConfirm}>
+                {CANCEL_LABEL}
+              </button>
+              <button type="button" onClick={confirmKdbxImport}>
+                {CSV_ADD_LABEL}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {kdbxImportPasswordVisible && (
+        <div className="import-export-panel__modal-overlay" role="presentation">
+          <div
+            ref={kdbxImportPasswordRef}
+            className="import-export-panel__modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={kdbxImportTitleId}
+          >
+            <h2 id={kdbxImportTitleId}>Пароль файла KDBX</h2>
+            <p>
+              Введите пароль файла, который собираетесь открыть - тот, которым он защищён в
+              KeePass-совместимом приложении. Записи будут ДОБАВЛЕНЫ к существующим, база не
+              заменяется.
+            </p>
+            <form onSubmit={(e) => void confirmKdbxImportPassword(e)}>
+              <label className="import-export-panel__label" htmlFor={kdbxImportFieldId}>
+                Пароль
+              </label>
+              <PasswordField
+                id={kdbxImportFieldId}
+                inputClassName="import-export-panel__input"
+                value={kdbxImportPassword}
+                onChange={(v) => {
+                  setKdbxImportPassword(v);
+                  setKdbxImportError(null);
+                }}
+                autoFocus
+              />
+              {kdbxImportError && (
+                <p className="import-export-panel__error" role="alert">
+                  {kdbxImportError}
+                </p>
+              )}
+              <div className="import-export-panel__modal-actions">
+                <button type="button" onClick={cancelKdbxImport}>
+                  {CANCEL_LABEL}
+                </button>
+                <button type="submit" disabled={kdbxImportPassword.length === 0 || busy === "kdbxImport"}>
+                  {busy === "kdbxImport" ? "Читаем файл..." : "Выбрать файл"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

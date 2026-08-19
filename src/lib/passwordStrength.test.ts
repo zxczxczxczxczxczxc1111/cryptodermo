@@ -22,6 +22,16 @@ describe("estimatePasswordStrength", () => {
     expect(estimatePasswordStrength("abababababab").level).toBe("weak");
   });
 
+  it("длинная мешанина по соседним клавишам - НЕ слабый только из-за длины (регрессия живого прогона 19.08.2026)", () => {
+    // Живой репорт: тот же пароль короче ("lsadlsa2349sdipsdkg;sdkg;lsdfklsdfkgldsf")
+    // оценивался как "Надёжный", а при удлинении становился "Слабым" - доля
+    // уникальных символов от длины падала ниже порога без всякой деградации
+    // самого пароля. hasLowVariety теперь ловит только повтор одного символа
+    // подряд и короткий цикл, не общее соотношение уникальности.
+    const password = "lsadlsa2349sdipsdkg;sdkg;lsdfklsdfkgldsfksdf;lkg;dsl";
+    expect(estimatePasswordStrength(password).level).not.toBe("weak");
+  });
+
   it("короткий случайный пароль - не попадает под правило разнообразия (длина < 6)", () => {
     // hasLowVariety не должна ложно портить короткие честные пароли/PIN.
     const result = estimatePasswordStrength("a1b2");

@@ -85,14 +85,46 @@ function alphabetSize(password: string): number {
   return size;
 }
 
-/** Доля уникальных символов от длины - низкое значение выдаёт "aaaaaaaa"
- * (0.1) или "abababab" (0.2), у которых формальная энтропия по алфавиту
- * завышена. Порог и минимальная длина проверки подобраны так, чтобы не
- * задевать короткие, но честно случайные пароли (PIN из непохожих цифр). */
+/**
+ * Вырожденный повтор символов - "aaaaaaaa" или "abababab", у которых
+ * формальная энтропия по алфавиту завышена относительно настоящей.
+ *
+ * Регрессия живого прогона (2026-08-19): первая версия сравнивала долю
+ * УНИКАЛЬНЫХ символов от общей длины (`new Set(password).size / length`).
+ * Порог ломался на длинных, но честных паролях - мешанина по соседним
+ * клавишам ("lsadlsa2349sdipsdkg;sdkg;...") естественно повторяет небольшой
+ * набор символов, и с ростом длины доля уникальных падает даже без всякой
+ * деградации (сокращение того же пароля пользователем вручную подтвердило:
+ * короче - "надёжный", length растёт - "слабый", хотя реальная случайность
+ * не менялась). Заменено на то, что действительно отличает вырожденный
+ * пароль от длинного случайного: длинный повтор ОДНОГО символа подряд и
+ * короткий цикл, из которого построена вся строка - оба сигнала не зависят
+ * от длины пароля, только от структуры.
+ */
 function hasLowVariety(password: string): boolean {
   if (password.length < 6) return false;
-  const uniqueCount = new Set(password).size;
-  return uniqueCount / password.length < 0.3;
+
+  let maxRun = 1;
+  let run = 1;
+  for (let i = 1; i < password.length; i++) {
+    run = password[i] === password[i - 1] ? run + 1 : 1;
+    if (run > maxRun) maxRun = run;
+  }
+  if (maxRun >= 4) return true;
+
+  for (let period = 1; period <= 4; period++) {
+    if (password.length < period * 3) continue;
+    let isCycle = true;
+    for (let i = period; i < password.length; i++) {
+      if (password[i] !== password[i - period]) {
+        isCycle = false;
+        break;
+      }
+    }
+    if (isCycle) return true;
+  }
+
+  return false;
 }
 
 export function estimatePasswordStrength(password: string): PasswordStrengthResult {

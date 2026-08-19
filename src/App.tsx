@@ -168,6 +168,8 @@ const BOOTSTRAP_ERROR_MESSAGE = "Не удалось определить рас
  */
 const IMPORT_SAVE_FAILED_MESSAGE =
   "Записи заменены, но сохранить базу на диск не удалось. Проверьте, что каталог доступен для записи, и попробуйте снова";
+const CSV_IMPORT_SAVE_FAILED_MESSAGE =
+  "Записи добавлены, но сохранить базу на диск не удалось. Проверьте, что каталог доступен для записи, и попробуйте снова";
 
 /**
  * Что вернуть в `store` при "Отмена" на модалке R28-после-импорта - снимок
@@ -620,6 +622,28 @@ function App() {
   }
 
   /**
+   * `ImportExportPanel.onCsvImportSuccess` (19.08.2026) - в отличие от
+   * `handleImportSuccess` выше, вся машинерия R28 (снимок для отката,
+   * модалка "число записей уменьшилось") здесь не нужна: CSV-импорт только
+   * ДОБАВЛЯЕТ записи через `store.addItem`, число записей в сторе не может
+   * уменьшиться, значит `store.save()` физически не бросит
+   * `ItemCountDecreasedError` - обычный `try/catch` на случай ошибки
+   * записи на диск (диск занят, нет прав и т.п.), тот же текстовый слот
+   * `importSaveError`, что и у обычного импорта, с другим текстом.
+   */
+  async function handleCsvImportSuccess() {
+    bumpDataVersion();
+    if (!store || !vaultPath) return;
+    try {
+      await store.save(vaultPath);
+      setImportSaveError(null);
+    } catch (err) {
+      console.error("App: не удалось сохранить базу после CSV-импорта", err);
+      setImportSaveError(CSV_IMPORT_SAVE_FAILED_MESSAGE);
+    }
+  }
+
+  /**
    * "Отмена" на модалке R28-после-импорта (кнопка, Esc или уход с экрана
    * без явного решения - см. `handleImportExportPanelKeyDown`/`navigateTo`
    * ниже) - откатывает `store` к снимку ДО импорта, а не просто прячет
@@ -927,6 +951,7 @@ function App() {
                 <ImportExportPanel
                   store={store}
                   onImportSuccess={handleImportSuccess}
+                  onCsvImportSuccess={() => void handleCsvImportSuccess()}
                   onError={(message) => console.error("ImportExportPanel:", message)}
                 />
                 {importSaveError && (

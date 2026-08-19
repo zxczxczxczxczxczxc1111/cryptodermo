@@ -13,7 +13,7 @@
  * часть, а не рендер/клики.
  */
 
-import type { Attachment, Item, ItemField, ItemHistoryEntry, ItemType } from "./vaultStore";
+import type { Attachment, Item, ItemField, ItemHistoryEntry, ItemType, NewItemInput } from "./vaultStore";
 
 /** Файл импорта не является валидным экспортом Vault: не JSON, не массив,
  * либо у одной из записей неверный тип/отсутствует обязательное поле.
@@ -229,4 +229,205 @@ export function buildExportFilename(date: Date): string {
  */
 export function buildReplaceConfirmationMessage(currentCount: number, importCount: number): string {
   return `Заменить ${currentCount} записей текущей базы на ${importCount} из файла?`;
+}
+
+/**
+ * Импорт паролей из CSV (19.08.2026) - совсем другая операция, чем «Импорт»
+ * выше: тот ЗАМЕНЯЕТ всю базу файлом собственного экспорта Vault
+ * (`replaceAllItems`), этот ДОБАВЛЯЕТ записи к уже существующим
+ * (`store.addItem` в `ImportExportPanel.tsx`) из файла постороннего формата -
+ * `name,url,username,password,note`, ровно то, что отдаёт экспорт паролей
+ * Chrome/Google Password Manager. Формат `vault.dat` не меняется вовсе -
+ * результат разбора такой же `Item`-подобный ввод, каким его сам пользователь
+ * мог бы создать руками в редакторе.
+ */
+export class CsvImportError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CsvImportError";
+  }
+}
+
+/** Имя поля, в которое попадает колонка `url` при импорте. Открывашка ссылки
+ * в карточке записи (`isOpenableUrl` в `openExternal.ts`) работает по ВИДУ
+ * значения, не по имени поля - специального служебного имени заводить не
+ * нужно, это просто подпись для человека. */
+const CSV_URL_FIELD_NAME = "Сайт";
+const CSV_LOGIN_FIELD_NAME = "Логин";
+const CSV_PASSWORD_FIELD_NAME = "Пароль";
+
+/**
+ * Разобрать текст в строки таблицы (RFC 4180: поля в кавычках могут
+ * содержать запятые, переводы строк и экранированные кавычки `""`).
+ * Ручной разбор вместо библиотеки (R31 - новая зависимость отдельным
+ * вопросом) - формат самого CSV простой и стабильный, `split(",")` был бы
+ * недостаточен только из-за кавычек, которые Chrome ставит вокруг значений
+ * с запятой внутри (например, в поле `note`).
+ */
+function parseCsvRows(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  let i = 0;
+  const len = text.length;
+
+  while (i < len) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+        continue;
+      }
+      field += c;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inQuotes = true;
+      i++;
+      continue;
+    }
+    if (c === ",") {
+      row.push(field);
+      field = "";
+      i++;
+      continue;
+    }
+    if (c === "\r") {
+      i++; // "\r\n" - сам перевод строки завершает строку по "\n" ниже
+      continue;
+    }
+    if (c === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      i++;
+      continue;
+    }
+    field += c;
+    i++;
+  }
+  // Последняя строка файла может не заканчиваться переводом строки.
+  if (field !== "" || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  // Полностью пустые строки (пустая строка файла между записями) - не
+  // данные, а разделитель визуального восприятия, пропускаем их здесь же,
+  // чтобы дальше по коду не проверять этот случай отдельно.
+  return rows.filter((r) => !(r.length === 1 && r[0].trim() === ""));
+}
+
+/**
+ * Разобрать CSV-экспорт паролей Chrome/Google Password Manager в записи для
+ * добавления в базу. Порядок колонок берётся из строки заголовка (первая
+ * строка файла), а не жёстко зашит - так надёжнее переживёт мелкие различия
+ * между версиями экспортёра, чем предположение "ровно этот порядок".
+ *
+ * `name`/`url`/`username`/`password` обязательны (без них это не похоже на
+ * этот формат вообще - `CsvImportError` целиком, ничего не возвращается
+ * частично, тот же принцип R100.1, что у `parseImportFile`). `note`
+ * необязательна - часть реальных экспортов Chrome её не содержит.
+ *
+ * Ведущий BOM (Chrome кладёт его в начало CSV-экспорта) снимается явно, а не
+ * в расчёте на поведение `TextDecoder` по умолчанию - здесь это не должно
+ * зависеть от того, вызывающий код передал `ignoreBOM` или нет.
+ */
+export function parseCsvPasswordImport(text: string): NewItemInput[] {
+  const withoutBom = text.startsWith("﻿") ? text.slice(1) : text;
+  const rows = parseCsvRows(withoutBom);
+  if (rows.length === 0) {
+    throw new CsvImportError("Файл пуст");
+  }
+
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const columnIndex = (name: string) => header.indexOf(name);
+  const nameIdx = columnIndex("name");
+  const urlIdx = columnIndex("url");
+  const usernameIdx = columnIndex("username");
+  const passwordIdx = columnIndex("password");
+  const noteIdx = columnIndex("note");
+
+  if (nameIdx === -1 || urlIdx === -1 || usernameIdx === -1 || passwordIdx === -1) {
+    throw new CsvImportError(
+      'Не похоже на экспорт паролей Chrome/Google: в заголовке файла нет колонок "name", "url", "username", "password"',
+    );
+  }
+
+  const dataRows = rows.slice(1);
+  return dataRows.map((cells, index) => {
+    const cell = (colIdx: number) => (colIdx === -1 ? "" : (cells[colIdx] ?? "").trim());
+    const name = cell(nameIdx);
+    const url = cell(urlIdx);
+    const username = cell(usernameIdx);
+    const password = cell(passwordIdx);
+    const note = cell(noteIdx);
+    const title = name !== "" ? name : url !== "" ? url : `Импортированная запись ${index + 1}`;
+
+    const fields: ItemField[] = [];
+    if (url !== "") fields.push({ name: CSV_URL_FIELD_NAME, value: url, secret: false });
+    fields.push({ name: CSV_LOGIN_FIELD_NAME, value: username, secret: false });
+    fields.push({ name: CSV_PASSWORD_FIELD_NAME, value: password, secret: true });
+
+    return { type: "login", title, fields, note } satisfies NewItemInput;
+  });
+}
+
+/**
+ * Отделить новые записи от похожих на уже существующие в базе (19.08.2026) -
+ * молчаливое дублирование при повторном импорте того же файла (или его
+ * пересечения с уже внесёнными вручную записями) не было бы замечено, пока
+ * список не разросся бы вдвое.
+ *
+ * Совпадением считается ЛИБО название (без учёта регистра, целиком - не
+ * похожесть), ЛИБО адрес сайта, если он есть у обеих сторон - сверка
+ * поверхностная, не пытается угадывать "это тот же сервис", только ловит
+ * буквальные повторы. Дубликаты не возвращаются вовсе - вызывающий код
+ * (`ImportExportPanel.tsx`) показывает только их количество.
+ */
+export function splitCsvImportDuplicates(
+  candidates: NewItemInput[],
+  existing: Item[],
+): { toAdd: NewItemInput[]; duplicateCount: number } {
+  const norm = (s: string) => s.trim().toLowerCase();
+  const existingTitles = new Set(existing.map((item) => norm(item.title)).filter((t) => t !== ""));
+  const existingUrls = new Set(
+    existing
+      .flatMap((item) => item.fields.filter((f) => !f.secret).map((f) => norm(f.value)))
+      .filter((v) => v !== ""),
+  );
+
+  const toAdd: NewItemInput[] = [];
+  let duplicateCount = 0;
+  for (const candidate of candidates) {
+    const url = candidate.fields?.find((f) => f.name === CSV_URL_FIELD_NAME)?.value ?? "";
+    const isDuplicate = existingTitles.has(norm(candidate.title)) || (url !== "" && existingUrls.has(norm(url)));
+    if (isDuplicate) {
+      duplicateCount++;
+      continue;
+    }
+    toAdd.push(candidate);
+  }
+  return { toAdd, duplicateCount };
+}
+
+/**
+ * Текст подтверждения перед добавлением CSV-импорта (тот же принцип, что у
+ * `buildReplaceConfirmationMessage` - явное число, никаких "несколько
+ * записей"). Дубликаты называются отдельной фразой, только если они есть -
+ * пустая база или файл без пересечений не должны читать про "0 похожих".
+ */
+export function buildCsvImportConfirmationMessage(toAddCount: number, duplicateCount: number): string {
+  const base = `Добавить ${toAddCount} записей из файла?`;
+  if (duplicateCount === 0) return base;
+  return `${base} Ещё ${duplicateCount} похожи на уже существующие записи и будут пропущены.`;
 }

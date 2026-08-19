@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { VaultStore, type Item } from "./vaultStore";
+import { VaultStore, type Item, type NewItemInput } from "./vaultStore";
 import {
+  CsvImportError,
   ImportValidationError,
+  buildCsvImportConfirmationMessage,
   buildExportFilename,
   buildManualCopyFilename,
   buildReplaceConfirmationMessage,
+  parseCsvPasswordImport,
   parseImportFile,
   serializeExport,
+  splitCsvImportDuplicates,
 } from "./importExport";
 
 // Швы из тикета 10 (R99/R100/R100.1, spec.md §12): разбор/валидация файла
@@ -146,5 +150,128 @@ describe("parseImportFile + VaultStore.replaceAllItems: реальное при�
       { fields: [{ name: "пароль", value: "old-secret" }], changedAt: "2026-01-01T12:00:00.000Z" },
     ]);
     expect(store.isDirty()).toBe(true);
+  });
+});
+
+describe("parseCsvPasswordImport: экспорт паролей Chrome/Google (19.08.2026)", () => {
+  it("разбирает обычный файл в записи с полями Сайт/Логин/Пароль", () => {
+    const csv =
+      "name,url,username,password,note\n" +
+      "gmail,https://mail.google.com/,me@gmail.com,s3cr3t,рабочая почта\n";
+    const items = parseCsvPasswordImport(csv);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual({
+      type: "login",
+      title: "gmail",
+      fields: [
+        { name: "Сайт", value: "https://mail.google.com/", secret: false },
+        { name: "Логин", value: "me@gmail.com", secret: false },
+        { name: "Пароль", value: "s3cr3t", secret: true },
+      ],
+      note: "рабочая почта",
+    } satisfies NewItemInput);
+  });
+
+  it("снимает ведущий BOM, который Chrome кладёт в свой экспорт", () => {
+    const csv = "﻿name,url,username,password,note\nsite,https://a.example/,u,p,\n";
+    expect(() => parseCsvPasswordImport(csv)).not.toThrow();
+    expect(parseCsvPasswordImport(csv)[0].title).toBe("site");
+  });
+
+  it("понимает кавычки CSV: запятая и перевод строки внутри поля note", () => {
+    const csv =
+      'name,url,username,password,note\n' +
+      'shop,https://shop.example/,u,p,"заметка, с запятой\nи второй строкой"\n';
+    const items = parseCsvPasswordImport(csv);
+    expect(items[0].note).toBe("заметка, с запятой\nи второй строкой");
+  });
+
+  it("пропускает колонку url, если она пустая - без пустого поля Сайт", () => {
+    const csv = "name,url,username,password,note\nnote-only,,,p,\n";
+    const items = parseCsvPasswordImport(csv);
+    expect(items[0].fields?.map((f) => f.name)).toEqual(["Логин", "Пароль"]);
+  });
+
+  it("работает без колонки note - она необязательна", () => {
+    const csv = "name,url,username,password\nsite,https://a.example/,u,p\n";
+    expect(() => parseCsvPasswordImport(csv)).not.toThrow();
+    expect(parseCsvPasswordImport(csv)[0].note).toBe("");
+  });
+
+  it("порядок колонок берётся из заголовка, а не жёстко зашит", () => {
+    const csv = "password,name,username,url\np,site,u,https://a.example/\n";
+    const items = parseCsvPasswordImport(csv);
+    expect(items[0].title).toBe("site");
+    expect(items[0].fields?.find((f) => f.secret)?.value).toBe("p");
+  });
+
+  it("подставляет название по умолчанию, если name и url оба пустые", () => {
+    const csv = "name,url,username,password\n,,u,p\n";
+    expect(parseCsvPasswordImport(csv)[0].title).toBe("Импортированная запись 1");
+  });
+
+  it("бросает CsvImportError на пустом файле", () => {
+    expect(() => parseCsvPasswordImport("")).toThrow(CsvImportError);
+  });
+
+  it("бросает CsvImportError, если в заголовке нет обязательных колонок", () => {
+    expect(() => parseCsvPasswordImport("foo,bar\n1,2\n")).toThrow(CsvImportError);
+  });
+});
+
+describe("splitCsvImportDuplicates: сверка с уже существующими записями (19.08.2026)", () => {
+  const existing: Item[] = [
+    {
+      ...VALID_ITEM,
+      id: "existing-1",
+      title: "GitHub",
+      fields: [
+        { name: "Сайт", value: "https://github.com/", secret: false },
+        { name: "Логин", value: "octocat", secret: false },
+        { name: "Пароль", value: "old", secret: true },
+      ],
+    },
+  ];
+
+  it("считает дубликатом совпадение по названию без учёта регистра", () => {
+    const candidates: NewItemInput[] = [{ type: "login", title: "github", fields: [], note: "" }];
+    const { toAdd, duplicateCount } = splitCsvImportDuplicates(candidates, existing);
+    expect(toAdd).toHaveLength(0);
+    expect(duplicateCount).toBe(1);
+  });
+
+  it("считает дубликатом совпадение по адресу сайта даже при другом названии", () => {
+    const candidates: NewItemInput[] = [
+      {
+        type: "login",
+        title: "Совсем другое название",
+        fields: [{ name: "Сайт", value: "https://github.com/", secret: false }],
+        note: "",
+      },
+    ];
+    const { toAdd, duplicateCount } = splitCsvImportDuplicates(candidates, existing);
+    expect(toAdd).toHaveLength(0);
+    expect(duplicateCount).toBe(1);
+  });
+
+  it("не считает дубликатом действительно новую запись", () => {
+    const candidates: NewItemInput[] = [
+      { type: "login", title: "Совсем новый сервис", fields: [], note: "" },
+    ];
+    const { toAdd, duplicateCount } = splitCsvImportDuplicates(candidates, existing);
+    expect(toAdd).toEqual(candidates);
+    expect(duplicateCount).toBe(0);
+  });
+});
+
+describe("buildCsvImportConfirmationMessage: текст подтверждения CSV-импорта (19.08.2026)", () => {
+  it("без дубликатов - только число добавляемых", () => {
+    expect(buildCsvImportConfirmationMessage(5, 0)).toBe("Добавить 5 записей из файла?");
+  });
+
+  it("с дубликатами - вторая фраза про пропуск", () => {
+    expect(buildCsvImportConfirmationMessage(5, 2)).toBe(
+      "Добавить 5 записей из файла? Ещё 2 похожи на уже существующие записи и будут пропущены.",
+    );
   });
 });

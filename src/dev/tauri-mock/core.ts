@@ -4,6 +4,14 @@
  * Покрывает ровно те пять команд, которые объявлены в `src/lib/tauriApi.ts` -
  * если там появится шестая, здесь честно упадёт с понятной ошибкой, а не
  * молча вернёт `undefined`.
+ *
+ * `write_vault_atomic` получает `bytes` base64-строкой, а не `number[]`
+ * (19.08.2026, см. комментарий у `writeVaultAtomic` в `tauriApi.ts`) - здесь
+ * декодируется через нативный `atob` (доступен только в браузере, но этот
+ * файл и так подключается лишь в режиме `--mode mock`, где браузер и есть
+ * среда исполнения). `read_vault` менять не пришлось: `mockReadFile` уже
+ * отдаёт обычный массив чисел, а `new Uint8Array(numberArray)` строит из
+ * него правильные байты тем же путём, что и из настоящего `ArrayBuffer`.
  */
 import {
   mockReadFile,
@@ -12,6 +20,18 @@ import {
   mockRotateBackups,
   mockExeDir,
 } from "./fs";
+
+/** base64 (стандартный алфавит) -> байты, через нативный `atob` - без
+ * собственной копии `base64ToBytes`, этот файл никогда не участвует в
+ * реальной сборке (только `--mode mock`), незачем следовать конвенции
+ * "своя копия хелпера в каждом модуле", которая существует ради
+ * независимости продакшен-модулей друг от друга. */
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 
 /** Задержка, имитирующая настоящий IPC. Без неё интерфейс в браузере ведёт
  * себя заметно бодрее, чем в живом окне, и состояния загрузки невозможно ни
@@ -28,7 +48,7 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
     case "read_vault":
       return (await mockReadFile(args?.path as string)) as T;
     case "write_vault_atomic":
-      return (await mockWriteFile(args?.path as string, args?.bytes as number[])) as T;
+      return (await mockWriteFile(args?.path as string, Array.from(base64ToBytes(args?.bytes as string)))) as T;
     case "list_backups":
       return (await mockListBackups(args?.dir as string)) as T;
     case "rotate_backups":

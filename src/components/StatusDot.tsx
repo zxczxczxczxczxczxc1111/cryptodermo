@@ -1,17 +1,31 @@
 import "./StatusDot.css";
 
 /**
- * Три случая, где в интерфейсе реально есть статус, требующий точки (R67).
+ * Случаи, где в интерфейсе реально есть статус, требующий точки (R67).
  * Это единственное место в интерфейсе, где цвет статуса появляется вне
  * нижней полосы "Состояние хранилища" - поэтому набор случаев закрытый,
- * никаких новых kind без пересмотра спецификации.
+ * новый вид добавляется только осознанно.
+ *
+ * `passwordIssue` добавлен 19.08.2026 по прямой просьбе пользователя: метка
+ * проблемного пароля (слабый, повторяющийся, найденный в утечке) в списке и
+ * карточке, показывается только при включённой галочке «Проверять пароли».
+ *
+ * Важно: он НЕ добавляет к точке `oldPassword` вторую точку рядом. Обе метки
+ * означают одно и то же («с этим паролем надо что-то сделать»), две точки
+ * подряд читались бы как шум, а третьего цвета в монохроме нет. Поэтому
+ * `oldPassword` стал одной из причин, которые собирает `passwordIssue`, а
+ * конкретные причины перечисляются в подписи через `label`.
  */
-export type StatusDotKind = "unsaved" | "staleBackup" | "oldPassword";
+export type StatusDotKind = "unsaved" | "staleBackup" | "oldPassword" | "passwordIssue";
 
 export interface StatusDotProps {
   kind: StatusDotKind;
   /** Необязательный класс для позиционирования в месте использования. */
   className?: string;
+  /** Своя подпись вместо стандартной для этого вида. Нужна там, где причина
+   * переменная: у `passwordIssue` их может быть несколько сразу («Слабый
+   * пароль, найден в утечке»). Уходит и в `aria-label`, и в `title`. */
+  label?: string;
 }
 
 /**
@@ -31,9 +45,11 @@ const LABEL: Record<StatusDotKind, string> = {
   unsaved: "Есть несохранённые изменения",
   staleBackup: "Последний бэкап устарел",
   oldPassword: "Пароль не менялся больше года",
+  passwordIssue: "С паролем что-то не так",
 };
 
-export function StatusDot({ kind, className }: StatusDotProps) {
+export function StatusDot({ kind, className, label }: StatusDotProps) {
+  const text = label ?? LABEL[kind];
   const classes = ["status-dot", `status-dot--${kind}`, className]
     .filter(Boolean)
     .join(" ");
@@ -42,8 +58,8 @@ export function StatusDot({ kind, className }: StatusDotProps) {
     <span
       className={classes}
       role="img"
-      aria-label={LABEL[kind]}
-      title={LABEL[kind]}
+      aria-label={text}
+      title={text}
     />
   );
 }

@@ -55,7 +55,16 @@ import "./App.css";
  * `List.tsx` для своей карточки).
  */
 export type Screen =
-  | { kind: "list"; typeFilter?: ItemType; withAttachments?: boolean }
+  | {
+      kind: "list";
+      typeFilter?: ItemType;
+      withAttachments?: boolean;
+      /** Показать только записи с проблемой пароля - переход из числа в
+       * «Состоянии базы». Отдельного пункта сайдбара под это нет: подсвечен
+       * остаётся «Все записи», а о фильтре говорит пилюля над списком, ровно
+       * как у фильтра по тегу. */
+      passwordIssue?: "weak" | "reused" | "breached";
+    }
   | { kind: "editor"; itemId: string | null }
   | { kind: "settings" };
 
@@ -317,12 +326,31 @@ function App() {
       if (cancelled) return;
       setHotkey(settings.hotkey ?? DEFAULT_HOTKEY);
       setHotkeyEnabled(settings.hotkeyEnabled === true);
+      setPasswordCheckEnabled(settings.passwordCheckEnabled === true);
       closeToTrayRef.current = settings.closeToTray === true;
     });
     return () => {
       cancelled = true;
     };
   }, [store, vaultPath, dataVersion]);
+
+  /**
+   * Проверка паролей включена (галочка в настройках). Живёт ЗДЕСЬ, а не в
+   * `Settings`, потому что значок проблемного пароля рисуют список и
+   * карточка: останься флаг локальным состоянием экрана настроек, значки
+   * появлялись бы только после захода туда.
+   */
+  const [passwordCheckEnabled, setPasswordCheckEnabled] = useState(false);
+
+  /**
+   * Значения паролей, которые проверка нашла в утечках.
+   *
+   * Значения, а не идентификаторы записей: поменял пароль - пометка снимается
+   * сама, без устаревшего снимка. Живёт только в памяти и только пока база
+   * открыта: чистится в `handleLock` вместе со стором, как и всё остальное
+   * расшифрованное.
+   */
+  const [breachedValues, setBreachedValues] = useState<Set<string>>(() => new Set());
 
   // Основное окно отвечает маленькому на запросы поиска и копирования.
   useQuickWindowServer(store);
@@ -526,6 +554,9 @@ function App() {
   function handleLock() {
     resetPendingImportState();
     setStore(null);
+    // Результат проверки утечек - производная от расшифрованных паролей и
+    // переживать блокировку не должен.
+    setBreachedValues(new Set());
     setScreen({ kind: "list" });
   }
 
@@ -734,6 +765,10 @@ function App() {
             vaultPath={vaultPath}
             typeFilter={screen.typeFilter}
             withAttachments={screen.withAttachments}
+            passwordCheckEnabled={passwordCheckEnabled}
+            breachedValues={breachedValues}
+            passwordIssue={screen.passwordIssue}
+            onClearPasswordIssue={() => void navigateTo({ kind: "list" })}
             onOpenItem={(id) => void navigateTo({ kind: "editor", itemId: id })}
             onCreateNew={() => void navigateTo({ kind: "editor", itemId: null })}
             onStoreChanged={bumpDataVersion}
@@ -762,6 +797,9 @@ function App() {
               bumpDataVersion();
             }}
             onAutoLockTimeoutChange={setTimeoutMs}
+            onPasswordCheckChange={setPasswordCheckEnabled}
+            onBreachedValuesChange={setBreachedValues}
+            onShowPasswordIssue={(kind) => void navigateTo({ kind: "list", passwordIssue: kind })}
             onClose={() => void navigateTo({ kind: "list" })}
             storageState={{
               itemsCount: allItems.length,

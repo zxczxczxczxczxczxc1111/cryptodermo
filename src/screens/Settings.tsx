@@ -321,6 +321,15 @@ export interface SettingsProps {
   onAutoLockTimeoutChange?: (autoLockTimeoutMs: number) => void;
   /** Закрыть экран настроек и вернуться к списку. */
   onClose: () => void;
+  /** Галочка «Проверять пароли» переключена. Флаг живёт в `App`, потому что
+   * значок проблемного пароля рисуют список и карточка, а не этот экран. */
+  onPasswordCheckChange?: (enabled: boolean) => void;
+  /** Проверка на утечки закончилась (или была прервана) - наружу уходят сами
+   * засвеченные значения, чтобы `App` мог пометить записи. */
+  onBreachedValuesChange?: (values: Set<string>) => void;
+  /** Показать записи с проблемой конкретного вида - переход в список из
+   * числа в «Состоянии базы». */
+  onShowPasswordIssue?: (kind: "weak" | "reused" | "breached") => void;
   /**
    * Состояние базы, доступное только для чтения. Переехало сюда из нижней
    * полосы, удалённой 17.08.2026: это справочные числа, на которые смотрят
@@ -351,6 +360,9 @@ export function Settings({
   onPasswordChanged,
   onAutoLockTimeoutChange,
   onClose,
+  onPasswordCheckChange,
+  onBreachedValuesChange,
+  onShowPasswordIssue,
   storageState,
   importExportSlot,
 }: SettingsProps) {
@@ -554,7 +566,12 @@ export function Settings({
 
   async function handleToggleBreachCheck(next: boolean) {
     setBreachEnabled(next);
-    if (!next) setBreachState({ kind: "idle" });
+    onPasswordCheckChange?.(next);
+    if (!next) {
+      setBreachState({ kind: "idle" });
+      // Выключили проверку - прежний результат больше ничего не помечает.
+      onBreachedValuesChange?.(new Set());
+    }
     try {
       await updateSettings(vaultPath, { passwordCheckEnabled: next });
     } catch (err) {
@@ -576,6 +593,7 @@ export function Settings({
     const unique = [...new Set(collectPasswordValues(store.search("")))];
     if (unique.length === 0) {
       setBreachState({ kind: "done", breached: 0, checked: 0 });
+      onBreachedValuesChange?.(new Set());
       return;
     }
     setBreachState({ kind: "running", done: 0, total: unique.length });
@@ -585,6 +603,7 @@ export function Settings({
         shouldStop: () => breachAbortRef.current,
       });
       setBreachState({ kind: "done", breached: result.breachedCount, checked: result.checkedCount });
+      onBreachedValuesChange?.(result.breachedValues);
     } catch (err) {
       console.error("Settings: проверка на утечки не удалась", err);
       setBreachState({
@@ -1107,13 +1126,44 @@ export function Settings({
                 <dt>Версия приложения</dt>
                 <dd>{storageState.appVersion}</dd>
               </div>
+              {/* Число - переход к самим записям: «слабых 3» без ответа на
+                  вопрос «каких именно» смотреть не на что (замечено
+                  пользователем 19.08.2026). Ноль не кликается: пустой список
+                  показывать незачем.
+                  Число считает ПОЛЯ, а список покажет ЗАПИСИ, и их может быть
+                  меньше - у записи с аккаунтами слабых паролей бывает
+                  несколько. */}
               <div className="settings__fact">
                 <dt>Слабых паролей</dt>
-                <dd>{storageState.weakPasswordsCount}</dd>
+                <dd>
+                  {storageState.weakPasswordsCount > 0 && onShowPasswordIssue ? (
+                    <button
+                      type="button"
+                      className="settings__fact-btn"
+                      onClick={() => onShowPasswordIssue("weak")}
+                    >
+                      {storageState.weakPasswordsCount}
+                    </button>
+                  ) : (
+                    storageState.weakPasswordsCount
+                  )}
+                </dd>
               </div>
               <div className="settings__fact">
                 <dt>Повторяющихся паролей</dt>
-                <dd>{storageState.reusedPasswordsCount}</dd>
+                <dd>
+                  {storageState.reusedPasswordsCount > 0 && onShowPasswordIssue ? (
+                    <button
+                      type="button"
+                      className="settings__fact-btn"
+                      onClick={() => onShowPasswordIssue("reused")}
+                    >
+                      {storageState.reusedPasswordsCount}
+                    </button>
+                  ) : (
+                    storageState.reusedPasswordsCount
+                  )}
+                </dd>
               </div>
             </dl>
 
@@ -1159,8 +1209,22 @@ export function Settings({
                         ? "Проверять нечего: паролей в базе нет"
                         : breachState.breached === 0
                           ? `Ни один из ${breachState.checked} паролей в утечках не найден`
-                          : `Найдено в утечках: ${breachState.breached} из ${breachState.checked}`
+                          : ""
                       : ""}
+                  {breachState.kind === "done" && breachState.breached > 0 && (
+                    <>
+                      {`Найдено в утечках: ${breachState.breached} из ${breachState.checked}. `}
+                      {onShowPasswordIssue && (
+                        <button
+                          type="button"
+                          className="settings__fact-btn"
+                          onClick={() => onShowPasswordIssue("breached")}
+                        >
+                          Показать записи
+                        </button>
+                      )}
+                    </>
+                  )}
                 </span>
               </div>
               {breachState.kind === "error" && (

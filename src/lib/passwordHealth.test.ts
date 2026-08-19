@@ -4,6 +4,7 @@ import {
   itemPasswordIssues,
   itemsWithPasswordIssue,
   NO_PASSWORD_ISSUES,
+  passwordIssueLabel,
 } from "./passwordHealth";
 import type { Item } from "./vaultStore";
 
@@ -163,5 +164,32 @@ describe("itemsWithPasswordIssue", () => {
   it("пустой результат, когда проблем нет", () => {
     const a = makeItem("a", [pass("Tr0ub4dor&3xyzQW")]);
     expect(itemsWithPasswordIssue([a], "weak")).toEqual([]);
+  });
+});
+
+describe("passwordIssueLabel", () => {
+  const issues = (patch: Partial<typeof NO_PASSWORD_ISSUES>) => ({ ...NO_PASSWORD_ISSUES, ...patch });
+
+  it("без поводов не даёт подписи вовсе (значок не рисуется)", () => {
+    expect(passwordIssueLabel(NO_PASSWORD_ISSUES)).toBeNull();
+    expect(passwordIssueLabel(NO_PASSWORD_ISSUES, false)).toBeNull();
+  });
+
+  it("называет причину, а не общее «что-то не так»", () => {
+    expect(passwordIssueLabel(issues({ weak: true }))).toBe("Пароль: слабый");
+    expect(passwordIssueLabel(issues({ reused: true }))).toBe("Пароль: повторяется");
+    expect(passwordIssueLabel(issues({ breached: true }))).toBe("Пароль: найден в утечке");
+  });
+
+  it("перечисляет все причины сразу, утечка первой как самая срочная", () => {
+    expect(passwordIssueLabel(issues({ weak: true, reused: true, breached: true }), true)).toBe(
+      "Пароль: найден в утечке, слабый, повторяется, не менялся больше года",
+    );
+  });
+
+  // Ради этого объединения и затевалось: раньше «не менялся год» рисовал
+  // отдельную точку рядом, и у поля их было две.
+  it("«не менялся больше года» сам по себе тоже даёт подпись", () => {
+    expect(passwordIssueLabel(NO_PASSWORD_ISSUES, true)).toBe("Пароль: не менялся больше года");
   });
 });

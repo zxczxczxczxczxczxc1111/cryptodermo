@@ -340,3 +340,25 @@
   padding-top: var(--sp-4);
   border-top: var(--border-w) solid var(--border);
 }
+
+/* Число в «Состоянии базы», ведущее к самим записям. Аффорданс - цвет и
+   курсор, без подчёркивания (в отличие от .settings__link-btn выше):
+   подчёркивание как признак нажимаемого в интерфейсе не используется. */
+.settings__fact-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.settings__fact-btn:hover {
+  color: var(--text-strong);
+}
+
+.settings__fact-btn:focus-visible {
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}

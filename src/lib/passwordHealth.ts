@@ -121,6 +121,33 @@ export function hasAnyPasswordIssue(issues: ItemPasswordIssues): boolean {
   return issues.weak || issues.reused || issues.breached;
 }
 
+/**
+ * Подпись к значку - перечисление причин, а не одно общее слово: «Слабый
+ * пароль» и «Пароль найден в утечке» требуют разных действий, и человек
+ * должен видеть, какое именно, не открывая настройки.
+ *
+ * `stale` («не менялся больше года») приходит отдельным флагом, потому что
+ * считается не здесь, а по истории записи (`isSecretFieldStale` в
+ * `RecordCard.tsx`). Он собран в ту же подпись сознательно: раньше он рисовал
+ * СВОЮ точку в тех же двух местах, и без объединения у поля появилось бы две
+ * точки подряд.
+ *
+ * Возвращает `null`, если поводов нет - вызывающий код в этом случае не
+ * рисует значок вовсе.
+ */
+export function passwordIssueLabel(
+  issues: ItemPasswordIssues,
+  stale = false,
+): string | null {
+  const reasons: string[] = [];
+  if (issues.breached) reasons.push("найден в утечке");
+  if (issues.weak) reasons.push("слабый");
+  if (issues.reused) reasons.push("повторяется");
+  if (stale) reasons.push("не менялся больше года");
+  if (reasons.length === 0) return null;
+  return `Пароль: ${reasons.join(", ")}`;
+}
+
 /** Записи с заданной проблемой - для перехода из настроек к списку. */
 export function itemsWithPasswordIssue(
   items: readonly Item[],

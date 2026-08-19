@@ -2,6 +2,7 @@ import { useEffect, useState, type KeyboardEvent, useRef } from "react";
 import { useModalFocus } from "../hooks/useModalFocus";
 import { save } from "@tauri-apps/plugin-dialog";
 import type { Attachment, Item, ItemField, ItemType, VaultStore } from "../lib/vaultStore";
+import { passwordIssueLabel, NO_PASSWORD_ISSUES, type ItemPasswordIssues } from "../lib/passwordHealth";
 import { writeVaultAtomic } from "../lib/tauriApi";
 import { base64ToBytes } from "../lib/base64";
 import { copyWithAutoClear } from "../lib/clipboard";
@@ -91,6 +92,10 @@ export function hasStaleSecretField(item: Item, now: Date = new Date()): boolean
 
 export interface RecordCardProps {
   item: Item;
+  /** Проблемы паролей этой записи - считает вызывающий код (списку они и так
+   * нужны для своих строк, пересчитывать второй раз незачем). `null` -
+   * проверка выключена галочкой в настройках, значок не показывать. */
+  passwordIssues?: ItemPasswordIssues | null;
   /** Открыть эту запись в редакторе - сам редактор строит тикет 08, здесь
    * только запрос перехода по `id`. */
   onEdit: (id: string) => void;
@@ -237,6 +242,7 @@ export function formatDeleteConfirmMessage(title: string): string {
 export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChanged, onDeleted,
   onTogglePinned,
   onDuplicate,
+  passwordIssues,
 }: RecordCardProps) {
   const [tab, setTab] = useState<Tab>("fields");
   /** Позиции полей, значения которых сейчас показаны. Позиции, а не имена:
@@ -593,10 +599,26 @@ export function RecordCard({ item, onEdit, store, vaultPath, onAttachmentsChange
               {group.entries.map(({ field, index }) => {
             const isRevealed = !field.secret || revealed.has(index);
             const stale = field.secret && isSecretFieldStale(item, field.name);
+            // Значок ставится только у полей «Пароль»: проблемы считаются
+            // именно для них (CVC и ключи секретные, но «слабый пароль» для
+            // них бессмысленно). Одна точка на все поводы - см. StatusDot.
+            const isPasswordField =
+              field.secret && field.name.trim().toLowerCase() === "пароль";
+            const fieldIssueLabel = isPasswordField
+              ? passwordIssueLabel(passwordIssues ?? NO_PASSWORD_ISSUES, Boolean(stale))
+              : stale
+                ? passwordIssueLabel(NO_PASSWORD_ISSUES, true)
+                : null;
             return (
               <div className="record-card__field" key={index}>
                 <div className="record-card__field-label">
-                  {stale && <StatusDot kind="oldPassword" className="record-card__field-dot" />}
+                  {fieldIssueLabel && (
+                    <StatusDot
+                      kind="passwordIssue"
+                      className="record-card__field-dot"
+                      label={fieldIssueLabel}
+                    />
+                  )}
                   <span>{field.name}</span>
                 </div>
                 <div className="record-card__field-row">

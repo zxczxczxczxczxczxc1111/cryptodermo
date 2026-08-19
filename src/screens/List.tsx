@@ -3,6 +3,11 @@ import type { Item, ItemField, ItemType, VaultStore } from "../lib/vaultStore";
 import { copyWithAutoClear } from "../lib/clipboard";
 import { RecordCard, TYPE_LABELS, hasStaleSecretField } from "../components/RecordCard";
 import { StatusDot } from "../components/StatusDot";
+import {
+  createPasswordIssueChecker,
+  passwordIssueLabel,
+  NO_PASSWORD_ISSUES,
+} from "../lib/passwordHealth";
 import { PlusIcon, CopyIcon, CheckIcon, StarIcon } from "../components/icons";
 import "./List.css";
 
@@ -57,6 +62,20 @@ export interface ListProps {
   typeFilter?: ItemType;
   /** Показывать только записи, у которых есть вложения. */
   withAttachments?: boolean;
+  /** Проверка паролей включена галочкой в настройках - только тогда список
+   * показывает значок у проблемных записей. Выключена: список чистый, как
+   * и просил пользователь («без спама и навязчивых оповещений»). */
+  passwordCheckEnabled?: boolean;
+  /** Значения паролей, найденных в утечках - приходят из `App`, потому что
+   * из базы это не выводится. */
+  breachedValues?: ReadonlySet<string>;
+  /** Показать только записи с этой проблемой пароля - переход из числа в
+   * «Состоянии базы» настроек. `weak`/`reused` пересчитываются по текущей
+   * базе (исправил пароль - запись уходит из фильтра сама), `breached`
+   * опирается на набор значений последней проверки. */
+  passwordIssue?: "weak" | "reused" | "breached";
+  /** Снять фильтр по проблеме - крестик у пилюли. */
+  onClearPasswordIssue?: () => void;
   /**
    * Стор был изменён прямо внутри этого экрана (сейчас - только удаление
    * вложения из карточки, см. `RecordCard.onAttachmentsChanged`) - сигнал
@@ -282,7 +301,20 @@ export function toggleTagFilter(current: string | null, clicked: string): string
   return current === clicked ? null : clicked;
 }
 
-export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged, refreshToken, typeFilter, withAttachments }: ListProps) {
+export function List({
+  store,
+  vaultPath,
+  onOpenItem,
+  onCreateNew,
+  onStoreChanged,
+  refreshToken,
+  typeFilter,
+  withAttachments,
+  passwordCheckEnabled,
+  breachedValues,
+  passwordIssue,
+  onClearPasswordIssue,
+}: ListProps) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -312,13 +344,28 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
     return safeSearch(store, query);
   }, [store, query, refreshToken, full]);
 
+  /**
+   * Проверка проблем пароля, подготовленная ОДИН раз на всю базу: карта
+   * повторов строится по всем записям, а список виртуализирован и спрашивает
+   * про каждую видимую строку - пересобирать её на строку значило бы квадрат
+   * на базе в тысячи записей.
+   *
+   * Считается по `full` (вся база), а не по отфильтрованному списку: повтор
+   * это свойство базы целиком, и в отфильтрованном виде он бы «исчезал».
+   */
+  const checkIssues = useMemo(
+    () => createPasswordIssueChecker(full.items, breachedValues),
+    [full, breachedValues],
+  );
+
   const filtered = useMemo<SearchResult>(() => {
     let items = searched.items;
     if (typeFilter) items = items.filter((i) => i.type === typeFilter);
     if (withAttachments) items = items.filter((i) => i.attachments.length > 0);
     if (tagFilter) items = items.filter((i) => i.tags.includes(tagFilter));
+    if (passwordIssue) items = items.filter((i) => checkIssues(i)[passwordIssue]);
     return items === searched.items ? searched : { items, error: searched.error };
-  }, [searched, typeFilter, withAttachments, tagFilter]);
+  }, [searched, typeFilter, withAttachments, tagFilter, passwordIssue, checkIssues]);
 
   const items = filtered.items;
 
@@ -596,6 +643,32 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
           )}
         </div>
 
+        {/* Пилюля фильтра по проблеме пароля - тот же вид, что у фильтра по
+            тегу: без неё короткий список выглядел бы так, будто записи
+            пропали, и выйти из него было бы нечем. */}
+        {passwordIssue && (
+          <div className="list__tag-filter">
+            <span className="list__tag-filter-text">
+              {passwordIssue === "weak"
+                ? "Записи со слабым паролем"
+                : passwordIssue === "reused"
+                  ? "Записи с повторяющимся паролем"
+                  : "Записи с паролем из утечки"}
+            </span>
+            {onClearPasswordIssue && (
+              <button
+                type="button"
+                className="list__tag-filter-clear"
+                onClick={onClearPasswordIssue}
+                aria-label="Показать все записи"
+                title="Показать все записи"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
+
         {tagFilter && (
           <div className="list__tag-filter">
             <span className="list__tag-filter-text">Тег: {tagFilter}</span>
@@ -640,6 +713,16 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
                     const index = startIndex + i;
                     const isActive = item.id === selectedId;
                     const stale = hasStaleSecretField(item, new Date(now));
+                    // Одна точка на все поводы, а не две подряд: «слабый» и
+                    // «не менялся год» об одном и том же, а причины
+                    // перечислены в подсказке. Пока проверка выключена
+                    // галочкой, остаётся прежнее поведение - только «старый».
+                    const issues = passwordCheckEnabled ? checkIssues(item) : NO_PASSWORD_ISSUES;
+                    const issueLabel = passwordCheckEnabled
+                      ? passwordIssueLabel(issues, stale)
+                      : stale
+                        ? passwordIssueLabel(NO_PASSWORD_ISSUES, true)
+                        : null;
                     return (
                       <button
                         type="button"
@@ -650,7 +733,9 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
                         aria-current={isActive ? "true" : undefined}
                       >
                         <span className="list__row-title-line">
-                          {stale && <StatusDot kind="oldPassword" className="list__row-dot" />}
+                          {issueLabel && (
+                            <StatusDot kind="passwordIssue" className="list__row-dot" label={issueLabel} />
+                          )}
                           {/* Звезда только у закреплённых: пустой контур в
                               каждой строке превратил бы список в частокол. */}
                           {item.pinned && (
@@ -730,6 +815,7 @@ export function List({ store, vaultPath, onOpenItem, onCreateNew, onStoreChanged
         {selectedItem ? (
           <RecordCard
             item={selectedItem}
+            passwordIssues={passwordCheckEnabled ? checkIssues(selectedItem) : null}
             onEdit={onOpenItem}
             onTogglePinned={(id, pinned) => void handleTogglePinned(id, pinned)}
             onDuplicate={(id) => void handleDuplicate(id)}

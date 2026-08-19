@@ -81,6 +81,7 @@ cryptodermo_delete_data:
   ; сохранении - без базы они бессмысленны.
   Delete "$INSTDIR\emergency-decrypt.py"
   Delete "$INSTDIR\aes_gcm.py"
+  Delete "$INSTDIR\emergency-decrypt.bat"
   RMDir /r "$INSTDIR\backups"
   ; Только если папка опустела: RMDir без /r не трогает непустой каталог, и
   ; чужие файлы, случайно положенные пользователем рядом, переживут удаление.

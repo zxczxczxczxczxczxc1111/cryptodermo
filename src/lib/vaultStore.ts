@@ -32,22 +32,26 @@ import {
   type BackupInfo,
 } from "./tauriApi";
 
-// Текст скрипта аварийного дешифратора и его обязательного соседа
+// Текст скрипта аварийного дешифратора, его обязательного соседа
 // `aes_gcm.py` (собственная реализация AES/GCM на чистом Python, без
 // которой emergency-decrypt.py не может расшифровать тело - см. импорт в
-// начале emergency-decrypt.py) берётся из самих файлов в корне репозитория
-// через собственную возможность Vite (суффикс `?raw` даёт содержимое файла
-// как строку на этапе сборки - см. `vite/client.d.ts`, `declare module
-// '*?raw'`). Это не новая зависимость (Vite уже в проекте) и не
-// дублирование кода вручную: копии, которые ложатся рядом с `vault.dat` и
-// в `backups/` (см. `save()` ниже), гарантированно совпадают с реальными
-// файлами из репозитория, потому что это буквально те же файлы, а не
-// переписанные вручную строки, которые могли бы разойтись с оригиналом при
-// следующем изменении скриптов. Оба файла нужны вместе - копия одного без
-// другого бесполезна (`emergency-decrypt.py` откажет с понятной ошибкой,
-// если `aes_gcm.py` не лежит рядом), поэтому они всегда пишутся парой.
+// начале emergency-decrypt.py) и батника-обёртки `emergency-decrypt.bat`
+// (для тех, кто не хочет открывать командную строку - сам не расшифровывает
+// ничего, только находит Python и зовёт emergency-decrypt.py) берётся из
+// самих файлов в корне репозитория через собственную возможность Vite
+// (суффикс `?raw` даёт содержимое файла как строку на этапе сборки - см.
+// `vite/client.d.ts`, `declare module '*?raw'`). Это не новая зависимость
+// (Vite уже в проекте) и не дублирование кода вручную: копии, которые
+// ложатся рядом с `vault.dat` и в `backups/` (см. `save()` ниже),
+// гарантированно совпадают с реальными файлами из репозитория, потому что
+// это буквально те же файлы, а не переписанные вручную строки, которые
+// могли бы разойтись с оригиналом при следующем изменении скриптов. Все три
+// файла нужны вместе - копия `emergency-decrypt.py` без `aes_gcm.py` рядом
+// бесполезна (первый откажет с понятной ошибкой), а `.bat` без обоих ничего
+// не находит, поэтому пишутся все три разом, никогда по отдельности.
 import emergencyScriptSource from "../../emergency-decrypt.py?raw";
 import aesGcmScriptSource from "../../aes_gcm.py?raw";
+import emergencyBatSource from "../../emergency-decrypt.bat?raw";
 
 /** Тип записи (R43). */
 export type ItemType = "login" | "note" | "card" | "key" | "other";
@@ -754,11 +758,12 @@ export class VaultStore {
   }
 
   /**
-   * Записать `emergency-decrypt.py` И `aes_gcm.py` в указанный каталог -
-   * всегда вместе, никогда по отдельности: `emergency-decrypt.py` без
-   * `aes_gcm.py` рядом откажет с понятной ошибкой при попытке
-   * расшифровать тело (см. импорт `aes_gcm` в начале emergency-decrypt.py),
-   * так что копия одного без другого никого не спасёт в реальной аварии.
+   * Записать `emergency-decrypt.py`, `aes_gcm.py` И `emergency-decrypt.bat`
+   * в указанный каталог - всегда втроём, никогда по отдельности:
+   * `emergency-decrypt.py` без `aes_gcm.py` рядом откажет с понятной ошибкой
+   * при попытке расшифровать тело (см. импорт `aes_gcm` в начале
+   * emergency-decrypt.py), а `.bat` без обоих не находит, что запускать -
+   * так что копия неполного набора никого не спасёт в реальной аварии.
    * Неудача записи (диск занят, нет прав и т.п.) только логируется - это
    * вспомогательные файлы, не данные пользователя, и их отсутствие не
    * должно блокировать сохранение самой базы (см. `save()` выше).
@@ -770,8 +775,12 @@ export class VaultStore {
         new TextEncoder().encode(emergencyScriptSource),
       );
       await writeVaultAtomic(joinPath(dir, "aes_gcm.py"), new TextEncoder().encode(aesGcmScriptSource));
+      await writeVaultAtomic(
+        joinPath(dir, "emergency-decrypt.bat"),
+        new TextEncoder().encode(emergencyBatSource),
+      );
     } catch (err) {
-      console.error(`vaultStore: failed to copy emergency-decrypt.py/aes_gcm.py into ${dir}`, err);
+      console.error(`vaultStore: failed to copy emergency-decrypt scripts into ${dir}`, err);
     }
   }
 

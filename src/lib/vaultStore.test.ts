@@ -548,6 +548,17 @@ describe("VaultStore: save() orchestration (backup -> write -> rotate)", () => {
       expect(text).toContain("NIST SP 800-38D");
     }
 
+    // Тот же приём для третьего файла набора - .bat-обёртки над
+    // emergency-decrypt.py (19.08.2026).
+    const batScriptWrites = writeVaultAtomicMock.mock.calls.filter(([path]) =>
+      path.endsWith("emergency-decrypt.bat"),
+    );
+    expect(batScriptWrites).toHaveLength(2); // рядом с vault.dat и в backups/
+    for (const [, bytes] of batScriptWrites) {
+      const text = new TextDecoder().decode(bytes);
+      expect(text).toContain("Аварийная расшифровка базы cryptodermo");
+    }
+
     // Порядок: бэкап записан раньше, чем ротация вызвана.
     const backupCallOrder = writeVaultAtomicMock.mock.invocationCallOrder[
       writeVaultAtomicMock.mock.calls.findIndex(([path]) =>

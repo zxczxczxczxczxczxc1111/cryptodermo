@@ -211,6 +211,28 @@ export const MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024; // ~25 МБ
  * что у `MAX_ATTACHMENT_SIZE_BYTES` выше. */
 export const MAX_VAULT_SIZE_BYTES = 300 * 1024 * 1024; // ~300 МБ
 
+/**
+ * Поверхностная проверка формы одной записи после расшифровки (19.08.2026,
+ * найдено внешним ревью): `Array.isArray(parsed)` в `applyDecryptedVault`
+ * уже гарантирует, что тело - массив, но не гарантирует, что КАЖДЫЙ элемент
+ * похож на `Item`. Расшифровка, прошедшая тег AES-GCM, аутентична (байты не
+ * подменены), так что это не защита от атакующего - это защита от бага
+ * прошлой версии приложения, который мог бы записать что-то не той формы:
+ * лучше явный `FormatError` сейчас, чем `TypeError` где-то внутри `search()`
+ * или `RecordCard.tsx` при первом обращении к `fields`.
+ *
+ * Намеренно ПОВЕРХНОСТНАЯ - не полная схема `Item`: проверяются только два
+ * поля, без которых стор реально падает (`id` как ключ операций,
+ * `fields` как массив, по которому итерируются все экраны). Остальные поля
+ * (`title`, `tags`, `note` и т.д.) при отсутствии дают пустую строку/массив
+ * через `??`/`||` там, где их читают, и не роняют приложение.
+ */
+export function isValidItemShape(value: unknown): value is Item {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.id === "string" && Array.isArray(obj.fields);
+}
+
 /** Параметры KDF/шифра, зафиксированные для конкретной открытой/созданной
  * базы - всё, что нужно `toBytes()`, кроме самого `iv` (он новый на каждое
  * сохранение, см. `crypto.ts`). Соль и алгоритмы не меняются, пока не сменят
@@ -440,6 +462,12 @@ export class VaultStore {
     }
     if (!Array.isArray(parsed)) {
       throw new FormatError("Vault body must be a JSON array of items");
+    }
+    const badIndex = parsed.findIndex((entry) => !isValidItemShape(entry));
+    if (badIndex !== -1) {
+      throw new FormatError(
+        `Vault body item at index ${badIndex} is malformed: missing "id" (string) or "fields" (array)`,
+      );
     }
 
     this.items = parsed as Item[];

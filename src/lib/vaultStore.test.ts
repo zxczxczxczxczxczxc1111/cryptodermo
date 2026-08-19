@@ -9,7 +9,8 @@ import {
   MAX_VAULT_SIZE_BYTES,
   type Item,
 } from "./vaultStore";
-import { parseContainer } from "./vaultFormat";
+import { parseContainer, serializeContainer, type VaultHeader } from "./vaultFormat";
+import { deriveKey, encrypt } from "./crypto";
 
 // Кросс-компат тест "emergency-decrypt.py <-> приложение" (interfaces.md) -
 // в отдельном файле `vaultStore.crossCompat.test.js`, не здесь. Ему нужны
@@ -77,6 +78,74 @@ describe("VaultStore: createNewVault -> toBytes -> loadFromBytes roundtrip", () 
     await expect(reopened.loadFromBytes(bytes, "wrong password")).rejects.toThrow(
       /wrong password|corrupted/i,
     );
+  });
+});
+
+/** base64 (стандартный алфавит), без Node-специфичного Buffer - та же
+ * маленькая копия, что во всех остальных модулях проекта. Нужна только
+ * здесь, чтобы вручную собрать заголовок контейнера для тестов ниже. */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+/**
+ * Вручную зашифровать произвольный plaintext-JSON в валидный контейнер
+ * `vault.dat` под известным паролем - в обход `VaultStore.createNewVault`,
+ * которая всегда пишет корректный `Item[]`. Нужен только тестам ниже, чтобы
+ * проверить, что `loadFromBytes` отклоняет тело, прошедшее расшифровку
+ * (тег AES-GCM сошёлся - байты аутентичны), но по форме не похожее на
+ * `Item[]` - ровно то, что `applyDecryptedVault` обязана поймать сама, а не
+ * дать упасть где-то глубже в UI.
+ */
+async function encryptContainer(password: string, plaintext: unknown): Promise<Uint8Array> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iterations = 1000;
+  const key = await deriveKey(password, salt, iterations);
+  const { iv, ciphertext } = await encrypt(key, new TextEncoder().encode(JSON.stringify(plaintext)));
+  const header: VaultHeader = {
+    v: 1,
+    kdf: { alg: "PBKDF2-SHA256", params: { iterations }, salt: bytesToBase64(salt) },
+    cipher: "AES-256-GCM",
+    iv: bytesToBase64(iv),
+  };
+  return serializeContainer(header, ciphertext);
+}
+
+describe("VaultStore: applyDecryptedVault rejects a malformed but authentic body (19.08.2026)", () => {
+  // Тег AES-GCM сходится в обоих случаях ниже - тело НЕ повреждено и не
+  // подделано, оно просто не той формы. Раньше такое тело молча становилось
+  // `this.items`, и приложение падало позже, при первом обращении к полям
+  // записи (найдено внешним ревью).
+  it("rejects a decrypted body that is not a JSON array at all", async () => {
+    const bytes = await encryptContainer("pw", { not: "an array" });
+    const store = new VaultStore();
+    await expect(store.loadFromBytes(bytes, "pw")).rejects.toThrow(/must be a JSON array/i);
+  });
+
+  it("rejects an item missing \"id\"", async () => {
+    const bytes = await encryptContainer("pw", [{ fields: [] }]);
+    const store = new VaultStore();
+    await expect(store.loadFromBytes(bytes, "pw")).rejects.toThrow(/index 0/);
+  });
+
+  it("rejects an item whose \"fields\" is not an array", async () => {
+    const bytes = await encryptContainer("pw", [{ id: "a", fields: "not-an-array" }]);
+    const store = new VaultStore();
+    await expect(store.loadFromBytes(bytes, "pw")).rejects.toThrow(/index 0/);
+  });
+
+  it("reports the correct index for the first bad item, not just the first item", async () => {
+    const bytes = await encryptContainer("pw", [{ id: "a", fields: [] }, { id: "b" /* no fields */ }]);
+    const store = new VaultStore();
+    await expect(store.loadFromBytes(bytes, "pw")).rejects.toThrow(/index 1/);
+  });
+
+  it("still accepts a well-formed body (no false positives)", async () => {
+    const bytes = await encryptContainer("pw", [{ id: "a", fields: [], title: "ok" }]);
+    const store = new VaultStore();
+    await expect(store.loadFromBytes(bytes, "pw")).resolves.toBeUndefined();
   });
 });
 

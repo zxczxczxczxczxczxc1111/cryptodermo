@@ -1,6 +1,6 @@
 [package]
 name = "cryptodermo"
-version = "1.1.0"
+version = "1.2.0"
 description = "Личное зашифрованное офлайн-хранилище записей"
 authors = ["you"]
 edition = "2021"

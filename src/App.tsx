@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { QuickPalette } from "./components/QuickPalette";
 import { useGlobalHotkey, DEFAULT_HOTKEY } from "./hooks/useGlobalHotkey";
 import { useQuickWindowServer } from "./hooks/useQuickWindowServer";
+import { useQuickWindowUnlockGate } from "./hooks/useQuickWindowUnlockGate";
 import { openQuickWindow } from "./lib/openQuickWindow";
 import { useModalFocus } from "./hooks/useModalFocus";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -375,6 +376,9 @@ function App() {
 
   // Основное окно отвечает маленькому на запросы поиска и копирования.
   useQuickWindowServer(store);
+  // ...и, отдельно, на вопрос "заблокировано ли" и на попытки PIN, когда
+  // маленькое окно открыли, а база успела заблокироваться (19.08.2026).
+  useQuickWindowUnlockGate(vaultPath, store, handleUnlock);
 
   /**
    * Повторный запуск ярлыка быстрого доступа.
@@ -412,28 +416,21 @@ function App() {
   }, [store]);
 
   /**
-   * Сочетание поднимает МАЛЕНЬКОЕ окно, а не основное: вытаскивать на весь
-   * экран целую программу ради одной строки поиска - ровно то, чего человек
-   * избегает, нажимая клавиши.
+   * Сочетание всегда поднимает МАЛЕНЬКОЕ окно, а не основное: вытаскивать на
+   * весь экран целую программу ради одной строки поиска - ровно то, чего
+   * человек избегает, нажимая клавиши.
    *
-   * Когда база заблокирована, маленькому окну нечего показывать (данные живут
-   * в основном), поэтому там поднимается обычное окно с вводом PIN.
+   * До 19.08.2026 здесь была развилка: при заблокированной базе поднималось
+   * основное окно с вводом PIN, потому что маленькому окну спрашивать PIN
+   * было нечем. Оказалось, что это ломает саму идею быстрого вызова - долгое
+   * ожидание в трее почти всегда означает срабатывание автоблокировки, и
+   * хоткей превращался в "открыть всё приложение" ровно тогда, когда его
+   * особенно не хотят открывать (найдено пользователем). Теперь маленькое
+   * окно умеет спрашивать PIN само - см. `QuickWindow.tsx` и
+   * `useQuickWindowUnlockGate.ts`.
    */
   useGlobalHotkey(hotkeyEnabled, hotkey, () => {
-    void (async () => {
-      if (!store) {
-        try {
-          const win = getCurrentWindow();
-          await win.show();
-          await win.unminimize();
-          await win.setFocus();
-        } catch (err) {
-          console.error("App: не удалось поднять окно по сочетанию", err);
-        }
-        return;
-      }
-      await openQuickWindow();
-    })();
+    void openQuickWindow();
   });
 
   // Время последнего бэкапа для нижней полосы (R66) - пересчитывается на

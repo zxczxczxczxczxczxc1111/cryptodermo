@@ -73,6 +73,79 @@
   color: var(--bg);
 }
 
+/* --- Загрузка / нет PIN / блокировка --- */
+
+.qwin__message {
+  margin: auto;
+  max-width: 42ch;
+  padding: 0 var(--sp-2);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-md);
+  text-align: center;
+}
+
+.qwin__message--error {
+  color: var(--danger);
+}
+
+/* --- Ввод PIN (заблокированная база, найдена и разобрана 19.08.2026) --- */
+
+.qwin__pin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: center;
+  justify-content: center;
+  margin: auto;
+  cursor: text;
+}
+
+.qwin__pin-row {
+  position: relative;
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+/* Настоящее поле невидимо, но существует: вставка, backspace и экранные
+   читалки работают средствами браузера, а не переписываются руками. */
+.qwin__pin-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  border: none;
+  background: none;
+  cursor: text;
+}
+
+.qwin__pin-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--fill-subtle);
+  border: var(--border-w) solid var(--border-strong);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.qwin__pin-cell--filled {
+  background: var(--text-strong);
+  border-color: var(--text-strong);
+}
+
+.qwin__pin-cell--next {
+  border-color: var(--border-active);
+}
+
+.qwin__pin-row.qwin__pin--error .qwin__pin-cell {
+  border-color: var(--danger);
+}
+
+.qwin__message--pin {
+  margin: 0;
+  max-width: none;
+}
+
 .qwin__search {
   flex: none;
   margin-top: var(--sp-3);

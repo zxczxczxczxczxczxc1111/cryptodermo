@@ -58,3 +58,35 @@
   color: var(--danger);
   font-size: var(--fs-md);
 }
+
+/* Форма пароля перед экспортом в KDBX - те же токены и та же раскладка
+   (колонка, зазор между парами label/input), что у формы смены
+   мастер-пароля в Settings.css, только внутри модалки. */
+.import-export-panel__modal form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.import-export-panel__label {
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.import-export-panel__input {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-field);
+  border: var(--border-w) solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+}
+
+.import-export-panel__input:focus-visible {
+  outline: var(--focus-ring-w) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
